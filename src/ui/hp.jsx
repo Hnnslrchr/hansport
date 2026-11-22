@@ -20,7 +20,7 @@ export function Tile({ tone, onClick, cls = '', label, children, style }) {
     ? <button type="button" class={c} onClick={click} aria-label={label} style={style}>{children}</button>
     : <div class={c} style={style}>{children}</div>;
 }
-const SRC = { garmin: 'Garmin', withings: 'Withings', athletedata: 'athletedata', strava: 'Strava', computed_strava: 'athletedata', hansport: 'berechnet' };
+const SRC = { garmin: 'Garmin', withings: 'Withings', athletedata: 'athletedata', strava: 'Strava', computed_strava: 'athletedata', hansport: 'berechnet', acts: 'Aktivitäten' };
 export const srcName = (s) => SRC[s] || (s ? String(s) : '');
 export function Head({ icon, label, src }) {
   return (

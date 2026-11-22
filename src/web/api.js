@@ -7,7 +7,7 @@ export async function api(url, opts = {}) {
   catch (e) { throw new ApiError('unavailable', 'Keine Verbindung zum Server'); }
   if (r.status === 401) { try { location.replace('/login.html'); } catch (e) { /* Test */ } throw new ApiError('unauthorized', 'Bitte anmelden', 401); }
   const j = await r.json().catch(() => null);
-  if (!r.ok) throw new ApiError((j && j.error && j.error.code) || 'http_' + r.status, (j && j.error && j.error.message) || 'Fehler ' + r.status, r.status);
+  if (!r.ok) { const e = new ApiError((j && j.error && j.error.code) || 'http_' + r.status, (j && j.error && j.error.message) || 'Fehler ' + r.status, r.status); if (j && j.error && j.error.retry) e.retry = j.error.retry; throw e; }
   return j;
 }
 

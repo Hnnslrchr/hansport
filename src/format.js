@@ -103,3 +103,13 @@ export const plural = (n, one, many) => int(n) + ' ' + (n === 1 ? one : many);
 
 // Satzende nach einem Datum ohne doppelten Punkt („21. Nov.“ statt „21. Nov..“)
 export const endDot = (t) => (String(t).endsWith('.') ? t : t + '.');
+
+// Runde 5: schmaler Abstand zwischen Zahl und Einheit, Datum ohne Klammern
+export const NB = ' ';
+export const withUnit = (v, u) => (u ? v + NB + u : String(v));
+export function dayMon(d) { const dt = parseDate(d); return dt.getDate() + '. ' + MON[dt.getMonth()]; }
+// „heute“, „gestern“ oder „letzte Messung 17. Sept.“
+export function lastMeas(d, ref) {
+  const diff = Math.round((parseDate(ref || today()) - parseDate(d)) / 86400000);
+  return diff <= 0 ? 'heute' : diff === 1 ? 'gestern' : 'letzte Messung ' + dayMon(d);
+}

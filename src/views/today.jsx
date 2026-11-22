@@ -15,13 +15,18 @@ const { sync } = Acts;
 import { syncHealth, healthDays, healthMeta, todayLocal, explainHealth } from '../health.js';
 import { M, latest, series, formWord, hmin } from '../metrics.js';
 import { aggregate, addDays } from '../analysis.js';
-import { km, hm as hmFmt, dur, int, num, dateShort, relDate, endDot } from '../format.js';
+import { km, hm as hmFmt, dur, int, num, dateShort, relDate, endDot, dayMon, lastMeas, NB } from '../format.js';
+import { DayBars, MeasureLine, Arc } from '../ui/r5.jsx';
+import { ReadinessCard } from './readiness.jsx';
 import { sportLabel } from '../sports.js';
 import { MetricSheet } from './health.jsx';
 import { explain } from '../strava.js';
 import { toast } from '../store.js';
 import { WEB, ACT_SRC } from '../env.js';
 
+// Fußzeile: Teile mit · verbinden, ohne Punkt am Ende der Teile
+const foot = (a) => a.filter(Boolean).join(' · ');
+const say = (t) => (t ? String(t).replace(/\.$/, '') : t);
 const cap = (x) => (x ? x[0].toUpperCase() + x.slice(1) : x);
 const WD = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const wdIdx = (d) => (new Date(d + 'T12:00:00').getDay() + 6) % 7;
@@ -51,6 +56,9 @@ export function Today() {
   const noHealth = !H.list.length;
   const busy = st.syncing || st.healthSyncing;
   const L = (k) => latest(H.list, k, sel);
+  // Kacheln ohne jeden Wert ausblenden (Einstellung unter Mehr → Datenquellen); ältere Werte bleiben sichtbar
+  const hideEmpty = (getState().settings.main || {}).hideEmpty !== false;
+  const show = (k) => !hideEmpty || !!latest(H.list, k, sel);
 
   return (
     <div class="view root" ref={scroller}>
@@ -77,18 +85,19 @@ export function Today() {
       {noHealth && !busy ? <div class="hp-banner"><Ico n="info-circle" /><div class="grow" style="flex:1">{WEB ? 'Noch keine Gesundheitsdaten. Gleiche Garmin und Withings ab.' : 'Noch keine Gesundheitsdaten. Gleiche Garmin und Withings über athletedata ab; beim ersten Mal fragt Claude nach deiner Erlaubnis.'}<div style="margin-top:8px"><button type="button" class="btn" disabled={busy} onClick={refreshAll}>{busy ? 'Gleiche ab …' : 'Jetzt abgleichen'}</button></div></div></div> : null}
 
       <div class="bento">
-        <RingsTile row={row} onOpen={open} v4 />
+        {noHealth && !H.list.length ? null : <ReadinessCard H={H} date={sel} />}
         <LastActivity d={d} />
-        <FormTile H={H} meta={meta} sel={sel} onOpen={open} v4 />
-        <FitnessTile H={H} sel={sel} onOpen={open} />
-        <HrvTile row={row} L={L} H={H} sel={sel} onOpen={open} v4 />
-        <RhrTile row={row} L={L} H={H} sel={sel} onOpen={open} v4 />
-        <SleepTile row={row} onOpen={open} v4 />
-        <BBTile row={row} onOpen={open} />
-        <StressTile H={H} sel={sel} onOpen={open} />
-        <Vo2Tile L={L} H={H} sel={sel} onOpen={open} />
-        <StepsTile H={H} sel={sel} onOpen={open} />
-        <WeightTile H={H} L={L} sel={sel} onOpen={open} />
+        {show('hrv') ? <HrvTile row={row} L={L} H={H} sel={sel} onOpen={open} v4 /> : null}
+        {show('rhr') ? <RhrTile row={row} L={L} H={H} sel={sel} onOpen={open} v4 /> : null}
+        {show('sleep') ? <SleepTile row={row} onOpen={open} v4 /> : null}
+        {show('bb') ? <BBTile L={L} sel={sel} onOpen={open} /> : null}
+        {show('stress') ? <StressTile H={H} sel={sel} onOpen={open} /> : null}
+        {show('akcal') ? <CaloriesTile H={H} sel={sel} today={today} onOpen={open} /> : null}
+        {show('steps') ? <StepsTile H={H} sel={sel} onOpen={open} /> : null}
+        {show('vo2') ? <Vo2Tile L={L} sel={sel} onOpen={open} /> : null}
+        {show('weight') ? <WeightTile H={H} L={L} sel={sel} onOpen={open} /> : null}
+        {show('tsb') ? <FormTile H={H} meta={meta} sel={sel} onOpen={open} v4 /> : null}
+        {show('ctl') ? <FitnessTile H={H} sel={sel} onOpen={open} /> : null}
         <WeekTile d={d} today={today} H={H} />
         <RecordsTile d={d} today={today} />
       </div>
@@ -104,33 +113,9 @@ export function Today() {
         ))}
       </div>
       <div class="hp-sub" style="padding:10px 16px 0">
-        Gesundheitsdaten {meta.lastSync ? 'abgeglichen ' + new Date(meta.lastSync).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'noch nicht abgeglichen'}{WEB ? ' · Garmin und Withings, Aktivitäten aus Garmin.' : ' · Garmin und Withings über athletedata, Aktivitäten aus Strava.'}
+        Gesundheitsdaten {meta.lastSync ? 'abgeglichen ' + new Date(meta.lastSync).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'noch nicht abgeglichen'}{WEB ? ' · Garmin und Withings, Aktivitäten von Garmin. Bereitschaft und Belastung berechnet hansport.' : ' · Garmin und Withings über athletedata, Aktivitäten aus Strava.'}
       </div>
     </div>
-  );
-}
-
-export function RingsTile({ row, onOpen, v4 }) {
-  const items = [
-    { k: 'rec', v: M.rec.get(row), max: 100, color: 'var(--c-erh)', name: 'Erholung' },
-    { k: 'slScore', v: row.slScore, max: 100, color: 'var(--c-sch)', name: 'Schlaf' },
-    { k: 'bb', v: row.g && row.g.bbWake, max: 100, color: 'var(--ink-2)', name: 'Body Battery' },
-  ];
-  const say = M.rec.say(M.rec.get(row), row) || M.slScore.say(row.slScore) || null;
-  return (
-    <Tile cls={'w2 g-erh ' + (v4 ? 'glow multi' : 'mesh')} style={v4 ? '--gc1:var(--glow-erh);--ga1:var(--ga-erh);--gc2:var(--glow-sch);--ga2:var(--ga-sch)' : null} onClick={() => onOpen('rec')} label="Erholung, Schlaf und Body Battery, Details">
-      <Head icon="battery-full" label="Bereitschaft" />
-      <div class="rings">
-        <Rings items={items} label={items.map((x) => x.name + ' ' + (x.v ?? 'keine Daten')).join(', ')} />
-        <div class="ring-leg">
-          {items.map((x) => (
-            <div class="it"><span class="sw" style={{ background: x.color }} /><span class="hp-lbl">{x.name}</span><b>{x.v != null ? x.v : '–'}</b></div>
-          ))}
-          <div class="hp-sub" style="margin-top:0">{say || 'Für diesen Tag liegen keine Werte vor.'}</div>
-        </div>
-      </div>
-      <div class="hp-sub" style="font-size:var(--fs-cap2)">{row.rec == null && row.rdy != null ? 'Erholung: von hansport berechnet' : 'Erholung: athletedata'} · Schlaf und Body Battery: Garmin</div>
-    </Tile>
   );
 }
 
@@ -170,7 +155,7 @@ export function FormTile({ H, meta, sel, onOpen, v4 }) {
   const conf = meta.pmc && meta.pmc.conf;
   return (
     <Tile cls={v4 ? 'g-trn glow' + (v != null && (v < -20 || v > 15) ? ' gl-hi' : '') : ''} style={v4 ? '--gx:0%;--gy:100%' : null} onClick={() => onOpen('tsb')} label="Form, Details">
-      <Head icon="compass" label="Form" src={v != null ? M.tsb.src(l.r) : null} />
+      <Head icon="compass" label="Form" src={v != null ? 'hansport' : null} />
       {v != null ? <Big v={(v > 0 ? '+' : '') + num(v, 0)} cls="m" /> : <NoData />}
       <ScaleG min={-40} max={30} value={v} ticks={['−40', '0', '+30']} label={'Form ' + (v ?? 'keine Daten')} />
       <div class="hp-sub">{v != null ? cap(formWord(v)) + '.' : ''}{conf === 'low' ? ' Noch wenig Verlauf.' : ''}</div>
@@ -184,10 +169,10 @@ function FitnessTile({ H, sel, onOpen }) {
   const prev = s.slice(0, 35).reverse().find((x) => x.v != null);
   return (
     <Tile cls="g-trn" style="--gx:100%;--gy:100%" onClick={() => onOpen('ctl')} label="Fitness und Belastung, Details">
-      <Head icon="graph-up" label="Fitness" />
+      <Head icon="graph-up" label="Fitness" src={l ? 'hansport' : null} />
       {l ? <Big v={num(l.v, 0)} cls="m" /> : <NoData />}
       <ArcArea values={s.map((x) => x.v)} height={46} label="Fitness über 42 Tage" />
-      <div class="hp-sub">{a ? 'Belastung ' + num(a.v, 0) : 'Belastung –'}{l && prev ? ' · vor 7 T. ' + num(prev.v, 0) : ''}</div>
+      <div class="hp-sub">{a ? 'Ermüdung ' + num(a.v, 0) : 'Ermüdung –'}{l && prev ? ' · vor 7 Tagen ' + num(prev.v, 0) : ''}</div>
     </Tile>
   );
 }
@@ -213,7 +198,8 @@ export function HrvTile({ row, L, H, sel, onOpen, v4 }) {
           <ScaleG min={smin} max={smax} value={l && l.v} band={b} label="HRV im Vergleich zu deinem Normalbereich" />
         </Fragment>
       )}
-      <div class="hp-sub">{l ? (M.hrv.say(l.v, l.r) || '') + (stale ? ' Stand ' + endDot(dateShort(l.date)) : '') : 'Keine Messung.'}{b && !v4 ? ' Normal ' + int(b[0]) + '–' + int(b[1]) + '.' : ''}</div>
+      {(() => { const s14 = series(H.map, 'hrv', sel, 14); return s14.some((x) => x.v != null) ? <div class="fill" style="margin-top:10px"><Bars items={s14.map((x) => ({ v: x.v, label: dateShort(x.date) + ': ' + (x.v != null ? x.v + ' ms' : 'keine Daten') }))} height={34} label="HRV 14 Tage" /><div class="db-ax ends"><span>{dayMon(s14[0].date)}</span><span class="on">{sel === todayLocal() ? 'heute' : dayMon(sel)}</span></div></div> : null; })()}
+      <div class="hp-sub">{l ? foot([say(M.hrv.say(l.v, l.r)), stale ? lastMeas(l.date, sel) : null]) : 'keine Daten'}{b && !v4 ? ' Normal ' + int(b[0]) + '–' + int(b[1]) + '.' : ''}</div>
     </Tile>
   );
 }
@@ -234,8 +220,8 @@ export function RhrTile({ row, L, H, sel, onOpen, v4 }) {
           {lo != null ? <VScale min={Math.floor(lo - (hi - lo))} max={Math.ceil(hi + (hi - lo))} lo={lo} hi={hi} value={l && l.v} fmt={(x) => int(x)} label={'Ruhepuls ' + (l ? int(l.v) + ' bpm' : 'keine Daten') + ', normal ' + int(lo) + ' bis ' + int(hi)} /> : null}
         </div>
       ) : (l ? <Big v={int(l.v)} u="bpm" cls="m" /> : <NoData />)}
-      <div style="margin-top:10px"><Bars items={s.map((x) => ({ v: x.v, label: dateShort(x.date) + ': ' + (x.v != null ? x.v + ' bpm' : 'keine Daten') }))} height={34} label="Ruhepuls 14 Tage" /></div>
-      <div class="hp-sub">{l && base != null ? <Fragment><Chg d={l.v - base} fmt={(x) => num(x, 0)} better="down" /> zu Ø {num(base, 0)}</Fragment> : null}{l && l.date !== sel ? ' (' + dateShort(l.date) + ')' : ''}</div>
+      <div class="fill" style="margin-top:10px"><Bars items={s.map((x) => ({ v: x.v, label: dateShort(x.date) + ': ' + (x.v != null ? x.v + ' bpm' : 'keine Daten') }))} height={34} label="Ruhepuls 14 Tage" /><div class="db-ax ends"><span>{dayMon(s[0].date)}</span><span class="on">{sel === todayLocal() ? 'heute' : dayMon(sel)}</span></div></div>
+      <div class="hp-sub">{l && base != null ? <Fragment><Chg d={l.v - base} fmt={(x) => num(x, 0)} better="down" /> zu Ø {num(base, 0)}</Fragment> : null}{l && l.date !== sel ? ' · ' + lastMeas(l.date, sel) : ''}</div>
     </Tile>
   );
 }
@@ -263,37 +249,40 @@ export function SleepTile({ row, onOpen, v4 }) {
   );
 }
 
-function BBTile({ row, onOpen }) {
-  const g = row.g || {};
+function BBTile({ L, sel, onOpen }) {
+  const l = L('bb');
+  const g = (l && l.r.g) || {};
+  const stale = l && l.date !== sel;
+  const bbFoot = foot([g.bbCh > 0 ? '+' + g.bbCh + ' geladen' : null, g.bbDr > 0 ? '−' + g.bbDr + ' verbraucht' : null]);
   return (
-    <Tile cls={'g-erh' + (g.bbWake != null && g.bbWake < 30 ? ' gl-hi' : '')} style="--gx:50%;--gy:45%;--gs:70% 70%" onClick={() => onOpen('bb')} label="Body Battery, Details">
-      <Head icon="flash" label="Body Battery" src={g.bbWake != null ? 'garmin' : null} />
-      <Gauge min={0} max={100} value={g.bbWake} center={g.bbWake != null ? g.bbWake : '–'} sub="AUFWACHEN" size={124} label={'Body Battery beim Aufwachen ' + (g.bbWake ?? 'keine Daten')} />
-      <div class="hp-sub">{g.bbWake != null ? (g.bbCh != null ? '+' + g.bbCh + ' geladen · −' + (g.bbDr ?? '–') + ' verbraucht' : '') : 'keine Daten'}</div>
+    <Tile cls={'g-erh' + (l && l.v < 30 ? ' gl-hi' : '')} style="--gx:50%;--gy:45%;--gs:70% 70%" onClick={() => onOpen('bb')} label="Body Battery, Details">
+      <Head icon="flash" label="Body Battery" src={l ? 'garmin' : null} />
+      <div class="fill center"><Arc min={0} max={100} value={l && l.v} center={l ? l.v : '–'} unit="beim Aufwachen" label={'Body Battery beim Aufwachen ' + (l ? l.v : 'keine Daten')} /></div>
+      <div class="hp-sub">{l ? (stale ? lastMeas(l.date, sel) : bbFoot || say(M.bb.say(l.v, l.r))) : 'keine Daten'}</div>
     </Tile>
   );
 }
 
 function StressTile({ H, sel, onOpen }) {
-  const s = series(H.map, 'stress', sel, 14);
+  const s = series(H.map, 'stress', sel, 7);
   const l = latest(H.list, 'stress', sel);
   return (
     <Tile cls={'g-erh' + (l && l.v > 50 ? ' gl-hi' : '')} style="--gx:100%;--gy:100%" onClick={() => onOpen('stress')} label="Stress, Details">
-      <Head icon="brain" label="Stress Ø" src={l ? 'garmin' : null} />
+      <Head icon="brain" label="Stress" src={l ? 'garmin' : null} />
       {l ? <Big v={l.v} u="/100" cls="m" /> : <NoData />}
-      <div style="margin-top:10px"><Bars items={s.map((x) => ({ v: x.v, label: dateShort(x.date) + ': ' + (x.v != null ? 'Ø ' + x.v : 'keine Daten') }))} height={34} label="Stress 14 Tage" /></div>
-      <div class="hp-sub">{l ? M.stress.say(l.v) + (l.date !== sel ? ' (' + dateShort(l.date) + ')' : '') : ''}</div>
+      <div class="fill"><DayBars items={s.map((x) => ({ date: x.date, v: x.v }))} max={100} label="Stress der letzten 7 Tage" unit="von 100" /></div>
+      <div class="hp-sub">{l ? foot(['Tagesschnitt', say(M.stress.say(l.v)), l.date !== sel ? lastMeas(l.date, sel) : null]) : ''}</div>
     </Tile>
   );
 }
 
-function Vo2Tile({ L, onOpen }) {
+function Vo2Tile({ L, sel, onOpen }) {
   const l = L('vo2');
   return (
     <Tile cls="g-herz" style="--gx:50%;--gy:45%;--gs:70% 70%" onClick={() => onOpen('vo2')} label="VO2max, Details">
-      <Head icon="graph-up" label="VO2max Rad" src={l ? 'garmin' : null} />
-      <Gauge min={30} max={70} value={l && l.v} center={l ? l.v : '–'} sub="ML/KG/MIN" size={124} label={'VO2max ' + (l ? l.v : 'keine Daten')} />
-      <div class="hp-sub">{l ? (l.r.fitAge ? 'Fitnessalter ' + l.r.fitAge : 'Schätzung von Garmin') : 'keine Daten'}</div>
+      <Head icon="graph-up" label="VO2max" src={l ? 'garmin' : null} />
+      <div class="fill center"><Arc min={30} max={70} value={l && l.v} center={l ? num(l.v, l.v % 1 ? 1 : 0) : '–'} unit={'ml/kg/min'} label={'VO2max Rad ' + (l ? l.v : 'keine Daten')} /></div>
+      <div class="hp-sub">{l ? ['Rad', l.r.fitAge ? 'Fitnessalter ' + l.r.fitAge : 'Schätzung', l.date !== sel ? lastMeas(l.date, sel) : null].filter(Boolean).join(' · ') : 'keine Daten'}</div>
     </Tile>
   );
 }
@@ -304,13 +293,40 @@ function StepsTile({ H, sel, onOpen }) {
   const s = series(H.map, 'steps', sel, 7);
   const partial = g && g.partial;
   const v = g ? g.steps : r ? r.steps : null;
+  const goal = g && g.stepsGoal;
+  const pct = goal && v != null ? Math.round((v / goal) * 100) : null;
   return (
-    <Tile cls={'g-akt' + (g && g.stepsGoal && v >= g.stepsGoal ? ' gl-hi' : '')} style="--gx:100%;--gy:100%" onClick={() => onOpen('steps')} label="Schritte, Details">
-      <Head icon="walking" label={partial ? 'Schritte bisher' : 'Schritte'} src={v != null ? 'garmin' : null} />
+    <Tile cls={'g-akt' + (goal && v >= goal ? ' gl-hi' : '')} style="--gx:100%;--gy:100%" onClick={() => onOpen('steps')} label="Schritte, Details">
+      <Head icon="walking" label="Schritte" src={v != null ? 'garmin' : null} />
       {v != null ? <Big v={int(v)} cls="m" /> : <NoData />}
-      {g && g.stepsGoal && v != null ? <GBar value={v} max={g.stepsGoal} label={'Schritte ' + int(v) + ' von ' + int(g.stepsGoal)} /> : null}
-      <div style="margin-top:6px"><Bars items={s.map((x) => ({ v: x.v, label: dateShort(x.date) + ': ' + (x.v != null ? int(x.v) + ' Schritte' : 'keine Daten') }))} height={30} label="Schritte 7 Tage" /></div>
-      <div class="hp-sub">{g && g.stepsGoal ? 'Ziel ' + int(g.stepsGoal) + (g.floors != null ? ' · ' + g.floors + ' Stockwerke' : '') : ''}</div>
+      {goal && v != null ? <GBar value={v} max={goal} left={pct + NB + '% von ' + int(goal)} label={'Schritte ' + int(v) + ' von ' + int(goal) + ', ' + pct + ' Prozent'} /> : null}
+      <div class="fill"><DayBars items={s.map((x) => ({ date: x.date, v: x.v }))} goal={goal} label="Schritte der letzten 7 Tage" unit="Schritte" /></div>
+      <div class="hp-sub">{v != null ? (partial ? 'bisher heute' : 'ganzer Tag') + (g && g.floors != null ? ' · ' + g.floors + ' Stockwerke' : '') : ''}</div>
+    </Tile>
+  );
+}
+
+const WD2 = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+function CaloriesTile({ H, sel, today, onOpen }) {
+  const w0 = addDays(sel, -wdIdx(sel));
+  const days = Array.from({ length: 7 }, (_, i) => addDays(w0, i));
+  const val = (d) => { const r = H.map[d]; return d > today ? null : r && r.akcal != null ? r.akcal : null; };
+  const items = days.map((d) => ({ date: d, v: val(d) }));
+  const upto = items.filter((x) => x.date <= sel && x.v != null);
+  const week = upto.reduce((t, x) => t + x.v, 0);
+  const avg = upto.length ? week / upto.length : null;
+  const v = val(sel), y = val(addDays(sel, -1));
+  const r = H.map[sel] || {};
+  const gar = r.bmr != null ? 'Garmin' + (r.g && r.g.partial ? ' bisher' : '') + ': aktiv ' + int(r.act || 0) + ' · Ruhe ' + int(r.bmr) + NB + 'kcal' : 'Ruheumsatz: keine Quelle';
+  return (
+    <Tile cls="w2 g-akt" style="--gx:100%;--gy:0%;--gs:60% 90%" onClick={() => onOpen('akcal')} label="Kalorien, Details">
+      <Head icon="fire-flame" label="Kalorien" src="acts" />
+      <div class="hp-row" style="align-items:flex-end">
+        <div class="grow">{v != null ? <Big v={int(v)} u={'kcal ' + (sel === today ? 'heute' : dayMon(sel))} cls="xl" /> : <NoData />}</div>
+        {y != null ? <div class="kc-y"><b>{int(y)}{NB}kcal</b><span>{sel === today ? 'gestern' : dayMon(addDays(sel, -1))}</span></div> : null}
+      </div>
+      <div class="fill"><DayBars items={items} avg={avg} avgLabel={avg != null ? 'Ø ' + int(avg) : null} hlIndex={wdIdx(sel)} label="Kalorien aus Aktivitäten, diese Woche" unit="kcal" /></div>
+      <div class="hp-sub kc-foot"><span>Woche {int(week)}{NB}kcal · aus Aktivitäten</span><span>{gar}</span></div>
     </Tile>
   );
 }
@@ -318,19 +334,22 @@ function StepsTile({ H, sel, onOpen }) {
 function WeightTile({ H, L, sel, onOpen }) {
   const l = L('weight');
   const goalW = ((getState().settings.main || {}).healthGoals || {}).weight;
-  const pts = H.list.filter((r) => r.wi && r.wi.weight != null && r.date <= sel).slice(-10);
-  const prev = pts.length > 1 ? pts[pts.length - 2] : null;
-  const old = l ? ago(l.date, sel) : null;
+  if (!l) return <Tile cls="w2 g-kor" onClick={() => onOpen('weight')} label="Gewicht, Details"><Head icon="weight" label="Gewicht" /><NoData /></Tile>;
+  let pts = H.list.filter((r) => r.wi && r.wi.weight != null && r.date <= sel && r.date >= addDays(sel, -180)).map((r) => ({ date: r.date, v: r.wi.weight }));
+  if (pts.length < 2) pts = H.list.filter((r) => r.wi && r.wi.weight != null && r.date <= sel).slice(-10).map((r) => ({ date: r.date, v: r.wi.weight }));
+  const first = pts[0];
+  const d = first ? l.v - first.v : null;
+  const wi = l.r.wi || {};
   return (
-    <Tile cls={'w2 g-kor' + (l && goalW && l.v <= goalW ? ' gl-hi' : '')} style="--gx:100%;--gy:100%;--gs:60% 110%" onClick={() => onOpen('weight')} label="Gewicht, Details">
-      <Head icon="weight" label="Gewicht" src={l ? 'withings' : null} />
-      {l ? (
-        <div class="hp-row" style="align-items:flex-end;gap:16px">
-          <div><Big v={num(l.v, 1)} u="kg" cls="xl" /><div style="margin-top:8px">{prev ? <Chg d={l.v - prev.wi.weight} fmt={(x) => num(x, 1)} unit=" kg" label={'zur Messung vom ' + dateShort(prev.date)} /> : null}</div></div>
-          <div class="grow"><Bars items={pts.map((r) => ({ v: r.wi.weight, label: dateShort(r.date) + ': ' + num(r.wi.weight, 1) + ' kg' + (r.wi.fatPct != null ? ' · Fett ' + num(r.wi.fatPct, 1) + ' %' : '') }))} height={56} label="Letzte Wägungen" /></div>
-        </div>
-      ) : <NoData />}
-      <div class="hp-sub">{l ? (old > 14 ? 'Letzte Messung vor ' + old + ' Tagen (' + dateShort(l.date) + '). ' : 'Gemessen ' + endDot(relDate(l.date)) + ' ') + (l.r.wi.fatPct != null ? 'Körperfett ' + num(l.r.wi.fatPct, 1) + ' %, Muskeln ' + num(l.r.wi.muscle, 1) + ' kg.' : '') : 'Keine Wägung vorhanden.'}</div>
+    <Tile cls={'w2 g-kor' + (goalW && l.v <= goalW ? ' gl-hi' : '')} style="--gx:100%;--gy:0%;--gs:60% 110%" onClick={() => onOpen('weight')} label="Gewicht, Details">
+      <Head icon="weight" label="Gewicht" src="withings" />
+      <div class="hp-row" style="align-items:flex-end">
+        <div class="grow"><Big v={num(l.v, 1)} u="kg" cls="xl" /></div>
+        {first && pts.length > 1 ? <div class="kc-y"><b>{d > 0 ? '+' : d < 0 ? '−' : '±'}{num(Math.abs(d), 1)}{NB}kg</b><span>seit {dayMon(first.date)}</span></div> : null}
+      </div>
+      <div class="fill"><MeasureLine pts={pts} from={first.date} to={sel} goal={goalW} label={'Gewicht von ' + num(first.v, 1) + ' auf ' + num(l.v, 1) + ' Kilogramm seit ' + dayMon(first.date)} /></div>
+      <div class="ml-leg" aria-hidden="true"><span><i class="pt" />Messung</span><span><i class="tr" />7-Tage-Trend</span><span><i class="gp" />Lücke über 14 Tage</span></div>
+      <div class="hp-sub kc-foot"><span>{l.date === sel ? 'gemessen heute' : lastMeas(l.date, sel)}</span><span>{wi.fatPct != null ? 'Körperfett ' + num(wi.fatPct, 1) + NB + '%' : ''}{wi.muscle != null ? ' · Muskeln ' + num(wi.muscle, 1) + NB + 'kg' : ''}</span></div>
     </Tile>
   );
 }
@@ -385,7 +404,7 @@ function RecordsTile({ d, today }) {
         {highest ? <Fragment><span>Meiste Hm</span><b>{hmFmt(highest.gain)}</b><button type="button" class="hp-delta" style="border:0;justify-self:end" onClick={() => push('activity', { id: highest.id })}>{dateShort(highest.date)} ›</button></Fragment> : null}
         <span>Aktive Wochen in Folge</span><b>{streak}</b><span />
       </div>
-      <div class="hp-sub">Vorjahr bis zum gleichen Datum ({dateShort(lyTo)}). Indoor zählt nicht zu Distanz und Höhenmetern.</div>
+      <div class="hp-sub">Vorjahr bis zum gleichen Datum, {dayMon(lyTo)}. Indoor zählt nicht zu Distanz und Höhenmetern.</div>
     </Tile>
   );
 }

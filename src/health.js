@@ -257,4 +257,6 @@ export function healthDays() {
   cache = { v: H, list, map };
   return cache;
 }
+// Nur die Web-Version rechnet Belastung und Bereitschaft selbst nach
+export const recomputeHealth = () => null;
 export const healthMeta = () => (getState().meta && getState().meta.health) || {};

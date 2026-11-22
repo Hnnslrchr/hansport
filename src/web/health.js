@@ -30,12 +30,20 @@ export function explainHealth(e) {
 }
 
 // athletedata (optional, eigener Schlüssel): dann laufen Gesundheitsdaten und Coach-Gedächtnis wie in der Claude-Version
+// Standard: aus. Einschalten unter Mehr → Datenquellen (braucht ATHLETEDATA_API_KEY in Vercel).
 let adOn = null;
+export const athletedataWanted = () => !!(((getState().settings || {}).main || {}).sources || {}).athletedata;
 export async function athletedataOn() {
+  if (!athletedataWanted()) { globalThis.__hsFlags = { ...(globalThis.__hsFlags || {}), athletedata: false }; return false; }
   if (adOn != null) return adOn;
   try { const s = await api('/api/status'); adOn = !!(s.athletedata && s.athletedata.configured); } catch (e) { return false; }
   globalThis.__hsFlags = { ...(globalThis.__hsFlags || {}), athletedata: adOn };
   return adOn;
+}
+export function setAthletedataUse(on) {
+  const cur = (getState().settings || {}).main || {};
+  setDoc('settings/main', { ...cur, sources: { ...(cur.sources || {}), athletedata: !!on } });
+  adOn = null;
 }
 export async function adCall(tool, input) {
   if (!(await athletedataOn())) throw new HealthError('no_mcp', 'athletedata ist nicht eingerichtet');
@@ -85,7 +93,7 @@ async function doSync({ full = false } = {}) {
   const days = {};
   const put = (d, patch) => { if (!d) return; const x = days[d] || (days[d] = {}); for (const [k, v] of Object.entries(patch)) if (v != null) x[k] = v && typeof v === 'object' && !Array.isArray(v) && x[k] && typeof x[k] === 'object' ? { ...x[k], ...v } : v; };
   const notes = [];
-  let firstErr = null;
+  let firstErr = null, bbDone = false;
   const step = async (label, fn) => { try { await fn(); } catch (e) { if (['unauthorized', 'garmin_not_configured', 'garmin_key_invalid'].includes(e && e.code)) throw e; firstErr = firstErr || e; notes.push(label + ': ' + explainHealth(e)); } };
   const prog = (t) => setStatus({ healthProgress: t });
   try {
@@ -168,11 +176,12 @@ async function doSync({ full = false } = {}) {
 
     // 5) Body Battery beim Aufwachen (nur Einzeltage, daher die letzten Tage)
     await step('Body Battery', async () => {
-      const bFrom = fresh ? addDays(today, -13) : from;
+      const bFrom = fresh || !meta.bb30 ? addDays(today, -29) : from;
       for (let d = bFrom; d <= today; d = addDays(d, 1)) {
         const x = await garmin('/usersummary-service/usersummary/daily', { calendarDate: d });
         if (x && !x._empty) put(d, { g: clean({ bbWake: n(x.bodyBatteryAtWakeTime), bbHi: d === today ? null : n(x.bodyBatteryHighestValue), bbLo: d === today ? null : n(x.bodyBatteryLowestValue) }) });
       }
+      bbDone = true;
     });
 
     // 6) Gewicht aus Garmin Connect (falls dort erfasst)
@@ -217,28 +226,12 @@ async function doSync({ full = false } = {}) {
       else if (gw && gw.weight != null) { x.weight = gw.weight; if (gw.fatPct != null) x.fat = gw.fatPct; x.src = { ...(x.src || {}), weight: 'garmin' }; }
       if (x.resp == null && x.respDay != null) x.resp = x.respDay;
     }
-    computeBaselines(merged, Object.keys(days));
-    const pmc = computePmc(merged, today);
-    // Erholung/Bereitschaft (berechnet, offengelegt wie im Coach) für Tage ohne athletedata-Wert
-    for (const d of Object.keys(merged)) {
-      const x = merged[d];
-      if (!x.__dirty || x.rec != null) continue;
-      const R = readiness({ map: merged }, d);
-      if (R && R.date === d) { x.rdy = R.score; x.rdyK = R.level.k; } else { delete x.rdy; delete x.rdyK; }
-    }
-    // schreiben
-    const byMonth = {};
-    for (const d of Object.keys(merged)) if (merged[d].__dirty) (byMonth[d.slice(0, 7)] || (byMonth[d.slice(0, 7)] = {}))[d] = merged[d];
-    for (const [ym, add] of Object.entries(byMonth)) {
-      const cur = (getState().health[ym] && getState().health[ym].days) || {};
-      const next = { ...cur };
-      for (const [d, v] of Object.entries(add)) { const { __dirty, ...rest } = v; next[d] = rest; }
-      setDoc('health/' + ym, { days: next });
-    }
+    const pmc = deriveAll(merged, today);
+    writeDirty(merged);
     const allDays = Object.keys(days).sort();
     setDoc('meta/health', clean({
-      v: 6, src: 'garmin', lastSync: Date.now(), lastDay: allDays.length ? allDays[allDays.length - 1] : (meta.lastDay || today),
-      pmc: pmc || meta.pmc || null,
+      v: 7, src: 'garmin', lastSync: Date.now(), lastDay: allDays.length ? allDays[allDays.length - 1] : (meta.lastDay || today),
+      pmc: pmc || meta.pmc || null, bb30: meta.bb30 || bbDone || null,
       notes: notes.length ? notes.slice(0, 5) : null,
     }));
     setStatus({ healthSyncing: false, healthProgress: null });
@@ -264,67 +257,125 @@ function mergeDays(add) {
   return out;
 }
 
-// Basiswerte: Mittel, Streuung und Anzahl der 60 Tage davor (gemessene Werte)
-function computeBaselines(all, dates) {
-  const keys = { hrv: (r) => r.hrv, rhr: (r) => r.rhr, resp: (r) => r.resp };
-  for (const d of dates) {
-    const x = all[d];
-    if (!x) continue;
-    const base = {};
-    for (const [k, get] of Object.entries(keys)) {
-      const v = [];
-      for (let i = 1; i <= 60; i++) { const r = all[addDays(d, -i)]; const q = r ? get(r) : null; if (q != null && isFinite(q)) v.push(q); }
-      if (v.length >= 10) { const mu = v.reduce((s, y) => s + y, 0) / v.length; const sd = Math.sqrt(v.reduce((s, y) => s + (y - mu) ** 2, 0) / (v.length - 1)); base[k] = [r1(mu), r1(sd), v.length]; }
-    }
-    if (Object.keys(base).length) { x.base = base; x.__dirty = true; }
+function writeDirty(merged) {
+  const byMonth = {};
+  for (const d of Object.keys(merged)) if (merged[d].__dirty) (byMonth[d.slice(0, 7)] || (byMonth[d.slice(0, 7)] = {}))[d] = merged[d];
+  for (const [ym, add] of Object.entries(byMonth)) {
+    const cur = (getState().health[ym] && getState().health[ym].days) || {};
+    const next = { ...cur };
+    for (const [d, v] of Object.entries(add)) { const { __dirty, ...rest } = v; next[d] = rest; }
+    setDoc('health/' + ym, { days: next });
   }
 }
 
-// Fitness (CTL, 42 Tage), Ermüdung (ATL, 7 Tage), Form (TSB = CTL − ATL) aus der Garmin-Trainingslast.
-// Anschluss an die bisherige athletedata-Reihe: Startwerte vom letzten athletedata-Tag, Skalierung über
-// den Vergleich beider Belastungswerte in den 120 Tagen davor.
-function computePmc(all, today) {
-  const loadOf = {};
-  const acts = derived().list;
+// Alles, was hansport selbst berechnet: Normalbereiche, Belastung (Fitness/Ermüdung/Form) und Bereitschaft
+function deriveAll(all, today) {
+  migrateAthletedata(all);
+  computeBaselines(all);
+  const pmc = computePmc(all, today);
+  for (const d of Object.keys(all)) {
+    const x = all[d];
+    const R = readiness({ map: all }, d);
+    const v = R && R.date === d ? R.score : null, k = R && R.date === d ? R.level.k : null;
+    if ((x.rdy ?? null) !== v || (x.rdyK ?? null) !== k) { if (v == null) { delete x.rdy; delete x.rdyK; } else { x.rdy = v; x.rdyK = k; } x.__dirty = true; }
+  }
+  return pmc;
+}
+
+// Nach einem Aktivitäten-Abgleich: Belastung und Bereitschaft neu rechnen (ohne Abruf)
+export function recomputeHealth() {
+  const H = healthDays().map;
+  if (!Object.keys(H).length) return null;
+  const all = {};
+  for (const [d, row] of Object.entries(H)) { const { date, ...rest } = row; all[d] = { ...rest }; }
+  const pmc = deriveAll(all, todayLocal());
+  writeDirty(all);
+  const meta = (getState().meta && getState().meta.health) || {};
+  if ((pmc && JSON.stringify(pmc) !== JSON.stringify(meta.pmc)) || meta.v !== 7) setDoc('meta/health', { ...meta, v: 7, pmc: pmc || meta.pmc || null });
+  return pmc;
+}
+
+// Frühere athletedata-Werte bleiben erhalten, werden aber nicht mehr angezeigt (eigene Felder)
+function migrateAthletedata(all) {
+  for (const x of Object.values(all)) {
+    if (x.base && !x.baseOwn && !x.adBase) { x.adBase = x.base; x.__dirty = true; }
+    if (x.ctl != null && !(x.src && x.src.pmc === 'hansport') && !x.adPmc) { x.adPmc = { ctl: x.ctl, atl: x.atl, tsb: x.tsb, load: x.load ?? null }; x.__dirty = true; }
+  }
+}
+
+// Normalbereiche (Mittel ± 1 SD) aus eigenen Messwerten: 90 Tage für die Anzeige, 60 Tage für die Bereitschaft
+const BKEYS = { hrv: (r) => r.hrv, rhr: (r) => r.rhr, resp: (r) => r.resp, bb: (r) => (r.g ? r.g.bbWake : null) };
+const dayNo = (s) => Math.round(Date.parse(s + 'T12:00:00Z') / 864e5);
+function computeBaselines(all) {
+  const dates = Object.keys(all).sort();
+  if (!dates.length) return;
+  const n0 = dayNo(dates[0]), N = dayNo(dates[dates.length - 1]) - n0 + 1;
+  const vals = {};
+  for (const [k, get] of Object.entries(BKEYS)) { const a = new Array(N).fill(null); for (const d of dates) { const q = get(all[d]); if (q != null && isFinite(q)) a[dayNo(d) - n0] = q; } vals[k] = a; }
+  const stat = (a, i, n) => { let c = 0, s1 = 0, s2 = 0; for (let j = Math.max(0, i - n); j < i; j++) { const q = a[j]; if (q != null) { c++; s1 += q; s2 += q * q; } } if (c < 10) return null; const mu = s1 / c; const sd = Math.sqrt(Math.max(0, (s2 - c * mu * mu) / (c - 1))); return [r1(mu), r1(sd), c]; };
+  for (const d of dates) {
+    const x = all[d], i = dayNo(d) - n0;
+    const base = {}, rb = {};
+    for (const k of Object.keys(BKEYS)) {
+      if (k !== 'bb') { const b = stat(vals[k], i, 90); if (b) base[k] = b; }
+      const q = stat(vals[k], i, 60); if (q) rb[k] = q;
+    }
+    const nb = Object.keys(base).length ? base : null, nr = Object.keys(rb).length ? rb : null;
+    if (JSON.stringify(x.base || null) !== JSON.stringify(nb) || !x.baseOwn) { if (nb) x.base = nb; else delete x.base; x.baseOwn = 1; x.__dirty = true; }
+    if (JSON.stringify(x.rb || null) !== JSON.stringify(nr)) { if (nr) x.rb = nr; else delete x.rb; x.__dirty = true; }
+  }
+}
+
+// Belastung je Aktivität: Strava Relative Effort; ohne ihn pulsbasiert (TRIMP nach Banister),
+// auf die Relative-Effort-Skala geeicht über Aktivitäten, die beides haben. Ohne Puls: Garmin-Trainingslast, ebenso geeicht.
+export function activityLoads(acts, all) {
+  const z = ((getState().meta.zones || {}).hist || []).slice(-1)[0] || {};
+  const rhrs = Object.values(all).map((r) => r.rhr).filter((v) => v != null).sort((a, b) => a - b);
+  const rest = z.rest || (rhrs.length ? rhrs[Math.floor(rhrs.length / 2)] : 50);
+  const hmax = z.max || Math.max(185, ...acts.map((a) => a.hrMax || 0).filter((v) => v < 230));
+  const trimp = (a) => { if (a.hrAvg == null || !(a.mov > 300)) return null; const f = Math.max(0, Math.min(1, (a.hrAvg - rest) / (hmax - rest))); return (a.mov / 60) * f * 0.64 * Math.exp(1.92 * f); };
+  const med = (v) => { v.sort((a, b) => a - b); return v[Math.floor(v.length / 2)]; };
+  const rT = [], rG = [];
+  for (const a of acts) { if (a.re > 3) { const t = trimp(a); if (t > 3) rT.push(a.re / t); if (a.load > 3) rG.push(a.re / a.load); } }
+  const kT = rT.length >= 8 ? Math.min(4, Math.max(0.25, med(rT))) : 1, kG = rG.length >= 8 ? Math.min(4, Math.max(0.1, med(rG))) : 1;
+  const out = {}, kcal = {};
+  let nRe = 0, nHr = 0, nG = 0;
   for (const a of acts) {
     if (a.excluded || !a.date) continue;
-    const l = a.load != null ? a.load : null;
-    if (l != null) loadOf[a.date] = (loadOf[a.date] || 0) + l;
+    if (a.cal > 0) kcal[a.date] = (kcal[a.date] || 0) + a.cal;
+    let l = null;
+    if (a.re != null) { l = a.re; nRe++; }
+    else { const t = trimp(a); if (t != null) { l = t * kT; nHr++; } else if (a.load != null) { l = a.load * kG; nG++; } }
+    if (l != null) out[a.date] = (out[a.date] || 0) + l;
   }
-  const dates = Object.keys(all).sort();
-  let anchor = null;
-  for (const d of dates) { const x = all[d]; if (x.ctl != null && x.atl != null && !(x.src && x.src.pmc === 'hansport') && d < today) anchor = d; }
-  const firstLoad = Object.keys(loadOf).sort()[0];
-  if (!anchor && !firstLoad) return null;
-  // Skalierung
-  let k = 1, pairs = 0;
-  if (anchor) {
-    const ratios = [];
-    for (let i = 0; i < 120; i++) { const d = addDays(anchor, -i); const x = all[d]; const g = loadOf[d]; if (x && x.load > 5 && g > 5) ratios.push(x.load / g); }
-    pairs = ratios.length;
-    if (ratios.length >= 8) { ratios.sort((a, b) => a - b); k = Math.min(3, Math.max(0.3, ratios[Math.floor(ratios.length / 2)])); }
-  }
-  let ctl = anchor ? all[anchor].ctl : 0, atl = anchor ? all[anchor].atl : 0;
-  let d = anchor ? addDays(anchor, 1) : addDays(firstLoad, -1);
-  if (!anchor && addDays(today, -400) > d) d = addDays(today, -400);
-  let last = null, prevCtl7 = null;
+  return { byDay: out, kcal, kT: Math.round(kT * 100) / 100, kG: Math.round(kG * 100) / 100, nRe, nHr, nG, calib: rT.length, rest, hmax };
+}
+
+// Fitness (42 Tage), Ermüdung (7 Tage), Form = Fitness − Ermüdung, vollständig aus den eigenen Aktivitäten
+function computePmc(all, today) {
+  const acts = derived().list.filter((a) => a.src === 'strava');
+  const L = activityLoads(acts, all);
+  const days = Object.keys(L.byDay).sort();
+  if (!days.length) return null;
+  let d = days[0] < addDays(today, -730) ? addDays(today, -730) : days[0];
+  let ctl = 0, atl = 0;
   const hist = [];
   for (; d <= today; d = addDays(d, 1)) {
-    const L = (loadOf[d] || 0) * k;
-    ctl += (L - ctl) / 42; atl += (L - atl) / 7;
+    const l = L.byDay[d] || 0;
+    ctl += (l - ctl) / 42; atl += (l - atl) / 7;
     const x = all[d] || (all[d] = {});
-    x.ctl = r1(ctl); x.atl = r1(atl); x.tsb = r1(ctl - atl); x.load = r1(L);
-    x.src = { ...(x.src || {}), pmc: 'hansport' };
-    x.__dirty = true;
-    hist.push([d, ctl]);
-    last = d;
+    const nv = { ctl: r1(ctl), atl: r1(atl), tsb: r1(ctl - atl), load: r1(l), akcal: Math.round(L.kcal[d] || 0) };
+    if (x.ctl !== nv.ctl || x.atl !== nv.atl || x.tsb !== nv.tsb || x.load !== nv.load || x.akcal !== nv.akcal || !(x.src && x.src.pmc === 'hansport')) {
+      Object.assign(x, nv); x.src = { ...(x.src || {}), pmc: 'hansport' }; x.__dirty = true;
+    }
+    hist.push(ctl);
   }
-  if (!last) return null;
-  const c7 = hist.length > 7 ? hist[hist.length - 8][1] : null;
+  const c7 = hist.length > 7 ? hist[hist.length - 8] : null;
   const tsb = ctl - atl;
   const form = tsb > 15 ? 'fresh' : tsb > 5 ? 'rested' : tsb > -10 ? 'neutral' : tsb > -30 ? 'optimal' : 'overreached';
   return clean({
     ctl: r1(ctl), atl: r1(atl), tsb: r1(tsb), form, ramp: c7 != null ? r1(ctl - c7) : null, trend: c7 == null ? null : ctl - c7 > 1 ? 'rising' : ctl - c7 < -1 ? 'falling' : 'stable',
-    date: last, conf: anchor ? (pairs >= 8 ? 'medium' : 'low') : 'low', since: anchor || firstLoad, k: Math.round(k * 100) / 100, src: 'hansport',
+    date: today, conf: hist.length >= 42 ? 'medium' : 'low', since: days[0], src: 'hansport',
+    n: clean({ re: L.nRe, hr: L.nHr, garmin: L.nG }), k: L.kT, calib: L.calib,
   });
 }

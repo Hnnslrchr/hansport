@@ -506,8 +506,9 @@ function ContextBlock({ a, e, d }) {
         <div class="field"><label for="act-notes">Notiz</label><textarea id="act-notes" class="input" value={notes} onInput={(ev) => setNotes(ev.target.value)} onBlur={() => notes !== (a.notes || '') && editAct(a.id, { notes })} placeholder="Untergrund, Bedingungen, Gefühl …" /></div>
         {a.sport !== 'gym' ? (
           <div class="field"><label for="act-gear">Ausrüstung</label>
-            <select id="act-gear" class="input" value={a.gear || ''} onChange={(ev) => editAct(a.id, { gearId: ev.target.value || undefined })}>
-              <option value="">– keine –</option>
+            <select id="act-gear" class="input" value={((S.edits[a.id] || {}).gearId === 'none') ? 'none' : a.gearAuto ? '' : a.gear || ''} onChange={(ev) => editAct(a.id, { gearId: ev.target.value || undefined })}>
+              <option value="">{a.gearAuto ? 'automatisch: ' + (d.gearNames[a.gear] || a.gear) : 'automatisch'}</option>
+              <option value="none">keine</option>
               {bikes.map((b) => <option value={b.id}>{b.name}{b.retired ? ' (ausgemustert)' : ''}</option>)}
               {own.map((g) => <option value={g.id}>{g.name}</option>)}
             </select>

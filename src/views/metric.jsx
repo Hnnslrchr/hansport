@@ -17,7 +17,7 @@ export const GROUP = {
   steps: 'akt', im: 'akt',
   kcal: 'akt',
   sleep: 'sch', slScore: 'sch',
-  hrv: 'erh', rec: 'erh', bb: 'erh', stress: 'erh',
+  hrv: 'erh', rec: 'erh', bb: 'erh', stress: 'erh', akcal: 'akt',
   weight: 'kor', fatPct: 'kor', muscle: 'kor', visceral: 'kor', vasc: 'kor', pwv: 'kor',
   ctl: null, atl: null, tsb: null,
 };
@@ -322,7 +322,8 @@ const CFG = {
   kcal: { kind: 'bars', title: 'Aktive Kalorien', unit: 'kcal', agg: 'sum', get: (r) => (r.g && r.g.act != null ? r.g.act : r.act), partial: (r) => !!(r.g && r.g.partial) },
   im: { kind: 'bars', title: 'Intensitätsminuten', unit: 'min', agg: 'sum', get: (r) => (r.g ? r.g.im : null), partial: (r) => !!(r.g && r.g.partial), weekGoal: (H, end) => { const r = lastRow(H, end, (x) => (x.g ? x.g.imGoal : null)); return r ? r.g.imGoal : null; }, goalLabel: 'Wochenziel (Garmin)', note: () => 'Garmin zählt mittlere Minuten einfach und hohe doppelt.' },
   stress: { kind: 'bars', title: 'Stress', unit: '', agg: 'mean', y100: true, zones: STRESS_Z, get: (r) => (r.g ? r.g.stress : null), partial: (r) => !!(r.g && r.g.partial), say: (v) => M.stress.say(v) },
-  rec: { kind: 'bars', title: 'Erholung', unit: '', agg: 'mean', y100: true, get: (r) => r.rec, say: (v, r) => M.rec.say && M.rec.say(v, r) },
+  rec: { kind: 'bars', title: 'Bereitschaft', unit: '', agg: 'mean', y100: true, get: (r) => M.rec.get(r), say: (v, r) => M.rec.say && M.rec.say(v, r) },
+  akcal: { kind: 'bars', title: 'Kalorien aus Aktivitäten', unit: 'kcal', agg: 'sum', get: (r) => r.akcal },
   slScore: { kind: 'bars', title: 'Schlafscore', unit: '', agg: 'mean', y100: true, get: (r) => (r.sl && r.sl.score != null ? r.sl.score : r.slScore), say: (v, r) => M.slScore.say && M.slScore.say(v, r) },
 };
 

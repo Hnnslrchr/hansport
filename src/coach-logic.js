@@ -11,59 +11,108 @@ const sd = (a) => { const m = mean(a); return a.length > 1 ? Math.sqrt(mean(a.ma
 const clamp = (v) => Math.max(0, Math.min(100, v));
 const n0 = (v) => num(v, 0).replace('-', '−'), n1 = (v) => num(v, 1).replace('-', '−');
 
-export const WEIGHTS = { hrv: 0.3, rhr: 0.2, sleep: 0.3, load: 0.2 };
+// Bereitschaft: fünf Faktoren, jeweils gegen die eigene Basis der letzten 60 Tage (60 Punkte = wie üblich, ±20 je Standardabweichung)
+export const WEIGHTS = { hrv: 0.25, sleep: 0.25, rhr: 0.15, load: 0.2, bb: 0.15 };
+export const FACTOR_LABEL = { hrv: 'HRV', sleep: 'Schlaf', rhr: 'Ruhepuls', load: 'Belastung', bb: 'Body Battery' };
 export const LEVELS = [
-  { min: 75, k: 'hart', label: 'hart möglich' },
-  { min: 55, k: 'normal', label: 'normales Training' },
-  { min: 40, k: 'locker', label: 'locker' },
-  { min: 0, k: 'ruhe', label: 'Ruhe / aktive Erholung' },
+  { min: 75, k: 'hart', name: 'Hart', label: 'hart möglich' },
+  { min: 55, k: 'normal', name: 'Normal', label: 'normales Training' },
+  { min: 40, k: 'locker', name: 'Locker', label: 'locker' },
+  { min: 0, k: 'ruhe', name: 'Ruhe', label: 'Ruhe / aktive Erholung' },
 ];
+const levelOf = (v) => LEVELS.find((l) => v >= l.min);
+const sdTxt = (z) => (Math.abs(z) < 0.05 ? '±0,0 SD' : (z > 0 ? '+' : '−') + num(Math.abs(z), 1) + ' SD');
+const devOf = (pts) => Math.max(-1, Math.min(1, (pts - 60) / 40));
 
 // Zeile für den Tag (oder die letzte davor, höchstens 1 Tag alt)
 function rowFor(H, date) {
+  const has = (r) => r && (r.hrv != null || r.rhr != null || (r.sl && r.sl.total) || r.slMin != null || (r.g && r.g.bbWake != null));
   const r = H.map[date];
-  if (r && (r.hrv != null || r.rhr != null || (r.sl && r.sl.total))) return { r, date };
+  if (has(r)) return { r, date };
   const y = H.map[addD(date, -1)];
-  return y ? { r: y, date: addD(date, -1) } : null;
+  return has(y) ? { r: y, date: addD(date, -1) } : null;
+}
+
+// Akute (7 Tage) zu chronischer (28 Tage) Belastung aus den Tageslasten
+export function loadRatio(H, date) {
+  let a = 0, c = 0, nc = 0;
+  for (let i = 0; i < 28; i++) { const r = H.map[addD(date, -i)]; const l = r && r.load != null ? r.load : null; if (l == null) continue; c += l; nc++; if (i < 7) a += l; }
+  if (nc < 21) return null;
+  const acute = a / 7, chronic = c / 28;
+  if (chronic < 3) return null;
+  return { acute, chronic, ratio: acute / chronic };
 }
 
 export function readiness(H, date) {
   const x = rowFor(H, date);
   if (!x) return null;
-  const r = x.r, parts = [];
-  const b = r.base || {};
-  if (r.hrv != null && b.hrv && b.hrv[1]) { const z = (r.hrv - b.hrv[0]) / b.hrv[1]; parts.push({ k: 'hrv', label: 'HRV', val: n0(r.hrv) + ' ms', base: `Mittel ${n1(b.hrv[0])} ± ${n1(b.hrv[1])}`, formula: `60 + 20 × ${n1(z)}`, pts: clamp(60 + 20 * z), z }); }
-  if (r.rhr != null && b.rhr && b.rhr[1]) { const z = (b.rhr[0] - r.rhr) / b.rhr[1]; parts.push({ k: 'rhr', label: 'Ruhepuls', val: n0(r.rhr) + ' bpm', base: `Mittel ${n1(b.rhr[0])} ± ${n1(b.rhr[1])}`, formula: `60 + 20 × ${n1(z)}`, pts: clamp(60 + 20 * z), z }); }
-  const sl = r.sl || {}, tot = sl.total != null ? sl.total : r.slMin, score = sl.score != null ? sl.score : r.slScore, need = r.need;
-  if (tot != null && need) { const dur = Math.min(1, tot / need) * 100; const pts = score != null ? 0.7 * dur + 0.3 * score : dur; parts.push({ k: 'sleep', label: 'Schlaf', val: hmm(tot) + ' h' + (score != null ? ' · Score ' + score : ''), base: 'Bedarf ' + hmm(need) + ' h', formula: score != null ? `0,7 × ${n0(dur)} + 0,3 × ${score}` : `${n0(dur)} (ohne Score)`, pts: clamp(pts), short: tot < need ? need - tot : 0 }); }
-  if (r.tsb != null) parts.push({ k: 'load', label: 'Belastung', val: 'Form ' + (r.tsb > 0 ? '+' : '') + n1(r.tsb), base: `Fitness ${n1(r.ctl)} · Ermüdung ${n1(r.atl)}`, formula: `70 + 2 × ${n1(r.tsb)}`, pts: clamp(70 + 2 * r.tsb) });
-  if (parts.length < 2) return null;
-  const wsum = parts.reduce((s, p) => s + WEIGHTS[p.k], 0);
-  for (const p of parts) p.w = WEIGHTS[p.k] / wsum;
-  const score100 = Math.round(parts.reduce((s, p) => s + p.w * p.pts, 0));
-  const level = LEVELS.find((l) => score100 >= l.min);
-  const missing = Object.keys(WEIGHTS).filter((k) => !parts.some((p) => p.k === k));
-  return { score: score100, level, parts, missing, date: x.date, r, athletedata: r.rec != null ? { rec: r.rec, verdict: r.verdict } : null };
+  const r = x.r, parts = [], caps = [];
+  const b = r.rb || r.base || {};
+  if (r.hrv != null && b.hrv && b.hrv[1]) { const z = (r.hrv - b.hrv[0]) / b.hrv[1]; parts.push({ k: 'hrv', val: n0(r.hrv) + ' ms', base: `Basis ${n0(b.hrv[0])} ± ${n0(b.hrv[1])}`, formula: `60 + 20 × ${n1(z)}`, pts: clamp(60 + 20 * z), z, dTxt: sdTxt(z) }); }
+  const sl = r.sl || {}, tot = sl.total != null ? sl.total : r.slMin, need = r.need;
+  if (tot != null && need) {
+    let debt = 0;
+    for (let i = 0; i < 3; i++) { const q = H.map[addD(x.date, -i)] || (i === 0 ? r : null); const t = q && (q.sl && q.sl.total != null ? q.sl.total : q.slMin); if (q && t != null && q.need) debt += Math.max(0, q.need - t); }
+    const dur = Math.min(1, tot / need) * 100, dPts = Math.max(0, 100 - debt / 3);
+    parts.push({ k: 'sleep', val: hmm(tot) + ' h', base: 'Bedarf ' + hmm(need) + (debt ? ' · Schuld ' + n0(debt) + ' min' : ''), formula: `0,7 × ${n0(dur)} + 0,3 × ${n0(dPts)}`, pts: clamp(0.7 * dur + 0.3 * dPts), short: tot < need ? need - tot : 0, debt, dTxt: n0(Math.min(100, (tot / need) * 100)) + ' %' });
+  }
+  if (r.rhr != null && b.rhr && b.rhr[1]) { const z = (b.rhr[0] - r.rhr) / b.rhr[1]; parts.push({ k: 'rhr', val: n0(r.rhr) + ' bpm', base: `Basis ${n0(b.rhr[0])} ± ${n0(b.rhr[1])}`, formula: `60 + 20 × ${n1(z)}`, pts: clamp(60 + 20 * z), z, dTxt: sdTxt(-z) }); if (-z > 2) caps.push('Ruhepuls deutlich über deiner Basis (' + sdTxt(-z) + ')'); }
+  const lr = loadRatio(H, x.date);
+  if (lr) { const q = lr.ratio; const pts = q <= 1 ? Math.min(90, 70 + 40 * (1 - q)) : clamp(70 - 80 * (q - 1)); parts.push({ k: 'load', val: 'Ø ' + n0(lr.acute) + ' zu ' + n0(lr.chronic), base: '7 zu 28 Tage',  formula: q <= 1 ? `70 + 40 × (1 − ${num(q, 2)})` : `70 − 80 × (${num(q, 2)} − 1)`, pts, ratio: q, dTxt: num(q, 2) }); }
+  const bbw = r.g && r.g.bbWake;
+  if (bbw != null) {
+    const bz = b.bb && b.bb[1] ? (bbw - b.bb[0]) / b.bb[1] : null;
+    parts.push({ k: 'bb', val: n0(bbw) + ' beim Aufwachen', base: bz != null ? `Basis ${n0(b.bb[0])} ± ${n0(b.bb[1])}` : 'noch keine Basis, Wert direkt', formula: bz != null ? `60 + 20 × ${n1(bz)}` : `${n0(bbw)} (direkt)`, pts: bz != null ? clamp(60 + 20 * bz) : clamp(bbw), z: bz, dTxt: bz != null ? sdTxt(bz) : n0(bbw) });
+  }
+  if (r.resp != null && b.resp && b.resp[1] && r.resp - b.resp[0] > 2 * b.resp[1] && r.resp - b.resp[0] >= 1) caps.push('Atemfrequenz deutlich erhöht (' + num(r.resp, 1) + ' statt ' + num(b.resp[0], 1) + ')');
+  // ohne Gesundheitswerte keine Bereitschaft (dann Belastungsbilanz)
+  if (!parts.some((p) => p.k !== 'load') || parts.length < 2) return null;
+  const wsum = parts.reduce((t, p) => t + WEIGHTS[p.k], 0);
+  for (const p of parts) { p.w = WEIGHTS[p.k] / wsum; p.label = FACTOR_LABEL[p.k]; p.dev = devOf(p.pts); }
+  let score100 = Math.round(parts.reduce((t, p) => t + p.w * p.pts, 0));
+  const raw = score100;
+  if (caps.length && score100 > 45) score100 = 45;
+  const level = levelOf(score100);
+  const missing = Object.keys(WEIGHTS).filter((k) => !parts.some((p) => p.k === k)).map((k) => FACTOR_LABEL[k]);
+  return { score: score100, raw, capped: caps, level, parts, missing, date: x.date, r };
+}
+
+// Ohne Gesundheitswerte: Belastungsbilanz nur aus dem Training (Form = Fitness − Ermüdung)
+export function balance(H, date) {
+  for (let i = 0; i < 3; i++) {
+    const r = H.map[addD(date, -i)];
+    if (r && r.ctl != null && r.atl != null) {
+      const tsb = r.tsb != null ? r.tsb : r.ctl - r.atl;
+      const k = tsb < -20 ? 'ruhe' : tsb < -10 ? 'locker' : tsb <= 5 ? 'normal' : 'hart';
+      return { tsb, ctl: r.ctl, atl: r.atl, date: addD(date, -i), k, word: tsb < -30 ? 'sehr ermüdet' : tsb < -10 ? 'ermüdet' : tsb <= 5 ? 'ausgeglichen' : 'frisch' };
+    }
+  }
+  return null;
 }
 
 const REC = {
-  ruhe: { title: 'Ruhetag', detail: 'Höchstens 30–45 min sehr locker (Zone 1), sonst Pause.' },
-  locker: { title: 'Locker 45–75 min, Zone 2', detail: 'Ruhig rollen, keine Intervalle, Puls unter der Zone-2-Obergrenze.' },
-  normal: { title: 'Normales Training, 60–120 min', detail: 'Ausdauer in Zone 2, kurze Tempoabschnitte sind möglich.' },
-  hart: { title: 'Gut erholt: hart oder lang', detail: 'Intervalle oder eine lange Ausfahrt passen heute.' },
+  ruhe: { title: 'Heute: Ruhe oder sehr locker', detail: 'Höchstens 30–45 min in Zone 1, sonst Pause.' },
+  locker: { title: 'Heute: locker, 45–75 min Zone 2', detail: 'Ruhig rollen, keine Intervalle, Puls unter der Zone-2-Obergrenze.' },
+  normal: { title: 'Heute: normal, 60–120 min Zone 2', detail: 'Ausdauer in Zone 2, kurze Tempoabschnitte sind möglich.' },
+  hart: { title: 'Heute: hart oder lang möglich', detail: 'Intervalle oder eine lange Ausfahrt passen.' },
 };
+export const recFor = (k) => REC[k];
 
 export function recommendation(R, H, date, plan) {
   if (!R) return null;
   let lk = R.level.k;
   const notes = [];
-  if (R.r.tsb != null && R.r.tsb < -20 && (lk === 'hart' || lk === 'normal')) { lk = 'locker'; notes.push('Form unter −20: trotz guter Einzelwerte lieber locker.'); }
-  // Gründe: die Teile mit der größten Abweichung von 60 Punkten (Richtung passend zur Empfehlung)
+  const tsb = R.r.tsb != null ? R.r.tsb : (H.map[addD(R.date, -1)] || {}).tsb;
+  if (tsb != null && tsb < -20 && (lk === 'hart' || lk === 'normal')) { lk = 'locker'; notes.push('Form unter −20: trotz guter Einzelwerte lieber locker.'); }
+  for (const c of R.capped || []) notes.push(c + ': heute höchstens locker. Bleibt das so oder fühlst du dich krank, ärztlich abklären lassen.');
+  // Gründe: die Teile mit der größten Abweichung (Richtung passend zur Empfehlung)
   const dir = R.score >= 55 ? -1 : 1;
   const reasons = [...R.parts].sort((a, b) => dir * (a.pts - b.pts)).slice(0, 3).map((p) => {
-    if (p.k === 'sleep') return p.short ? `Schlaf ${p.val.split(' ·')[0]}, ${hmm(p.short)} h unter deinem Bedarf` : `Schlaf ${p.val.split(' ·')[0]}, Bedarf gedeckt`;
-    if (p.k === 'hrv') return `HRV ${p.val} – ${p.z < -1.2 ? 'deutlich unter' : p.z < -0.3 ? 'unter' : p.z > 1.2 ? 'deutlich über' : p.z > 0.3 ? 'über' : 'nahe'} deinem Mittel`;
+    if (p.k === 'sleep') return p.short ? `Schlaf ${p.val}, ${hmm(p.short)} h unter deinem Bedarf` : `Schlaf ${p.val}, Bedarf gedeckt`;
+    if (p.k === 'hrv') return `HRV ${p.val} – ${p.z < -1.2 ? 'deutlich unter' : p.z < -0.3 ? 'unter' : p.z > 1.2 ? 'deutlich über' : p.z > 0.3 ? 'über' : 'nahe'} deiner Basis`;
     if (p.k === 'rhr') return `Ruhepuls ${p.val} – ${p.z < -1.2 ? 'deutlich höher' : p.z < -0.3 ? 'höher' : p.z > 0.3 ? 'niedriger' : 'nahe'} als üblich`;
+    if (p.k === 'load') return `Belastung der letzten 7 Tage ${p.ratio > 1.3 ? 'deutlich über' : p.ratio > 1.05 ? 'über' : p.ratio < 0.8 ? 'unter' : 'nahe'} deinem 28-Tage-Schnitt`;
+    if (p.k === 'bb') return `Body Battery ${p.val}${p.z != null ? (p.z < -0.5 ? ', weniger als üblich' : p.z > 0.5 ? ', mehr als üblich' : ', wie üblich') : ''}`;
     return `${p.val} (${p.base})`;
   });
   const today = plan && plan.days ? plan.days.find((d) => d.date === date) : null;
@@ -136,16 +185,16 @@ export function nutrition(H, date, plan, goalWeight) {
 export function contextPack({ H, acts, date, R, rec, ins, plan, memory, goals, actx, goalWeight }) {
   const L = [];
   const m3 = (k, d0, d1) => { const v = daily(H.list, M[k].get, addD(date, -d0), addD(date, -d1)).map((q) => q.v); return v.length ? n1(mean(v)) + ` (n=${v.length})` : 'keine Daten'; };
-  L.push(`Heute: ${date}. Datenquellen: ${WEB ? 'Garmin direkt (Aktivitäten, Schlaf, HRV, Puls, Body Battery), Withings (Waage), frühere Aktivitäten aus Strava; Basiswerte, Belastung und Erholung seit dem Wechsel von hansport berechnet (davor athletedata)' : 'Garmin (seit Okt. 2026), Withings (Waage), Strava (Aktivitäten), athletedata (Basiswerte, Belastung)'}.`);
-  if (R) L.push(`Tagesbereitschaft (eigene Berechnung): ${R.score}/100 = ${R.level.label}. Teile: ` + R.parts.map((p) => `${p.label} ${p.val} → ${n0(p.pts)} Pkt × ${n0(p.w * 100)} %`).join('; ') + (R.athletedata ? `. athletedata-Erholung: ${R.athletedata.rec}.` : '.'));
+  L.push(`Heute: ${date}. Datenquellen: ${WEB ? 'Garmin direkt (Aktivitäten, Schlaf, HRV, Puls, Body Battery), Withings (Waage), frühere Aktivitäten aus Strava; Normalbereiche, Belastung (aus Strava Relative Effort bzw. Puls) und Bereitschaft berechnet hansport selbst' : 'Garmin (seit Okt. 2026), Withings (Waage), Strava (Aktivitäten), athletedata (Basiswerte, Belastung)'}.`);
+  if (R) L.push(`Tagesbereitschaft (eigene Berechnung): ${R.score}/100 = ${R.level.label}. Teile: ` + R.parts.map((p) => `${p.label} ${p.val} → ${n0(p.pts)} Pkt × ${n0(p.w * 100)} %`).join('; ') + (R.capped && R.capped.length ? '. Gedeckelt wegen: ' + R.capped.join('; ') : '') + '.');
   if (rec) L.push(`Empfehlung der App heute: ${rec.title}. Gründe: ${rec.reasons.join('; ')}.`);
   const row = H.map[date] || {};
   const b = (latest(H.list, 'rhr', date) || {}).r || {};
-  if (b.base) L.push(`Normalbereiche (${WEB ? '60 Tage' : 'athletedata'}, Mittel±SD): Ruhepuls ${b.base.rhr ? n1(b.base.rhr[0]) + '±' + n1(b.base.rhr[1]) : '–'} bpm, HRV ${b.base.hrv ? n1(b.base.hrv[0]) + '±' + n1(b.base.hrv[1]) : '–'} ms, Atmung ${b.base.resp ? n1(b.base.resp[0]) + '±' + n1(b.base.resp[1]) : '–'}/min.`);
+  if (b.base) L.push(`Normalbereiche (${WEB ? 'eigene 90 Tage' : 'athletedata'}, Mittel±SD): Ruhepuls ${b.base.rhr ? n1(b.base.rhr[0]) + '±' + n1(b.base.rhr[1]) : '–'} bpm, HRV ${b.base.hrv ? n1(b.base.hrv[0]) + '±' + n1(b.base.hrv[1]) : '–'} ms, Atmung ${b.base.resp ? n1(b.base.resp[0]) + '±' + n1(b.base.resp[1]) : '–'}/min.`);
   L.push('Mittelwerte 7 / 28 / 90 Tage:');
-  for (const k of ['rhr', 'hrv', 'sleep', 'slScore', 'rec', 'bb', 'stress', 'steps']) if (M[k]) L.push(`- ${M[k].label} (${M[k].unit}): ${m3(k, 6, 0)} / ${m3(k, 27, 0)} / ${m3(k, 89, 0)}`);
+  for (const k of ['rhr', 'hrv', 'sleep', 'slScore', 'rec', 'bb', 'stress', 'steps', 'kcal']) if (M[k]) L.push(`- ${M[k].label} (${M[k].unit}): ${m3(k, 6, 0)} / ${m3(k, 27, 0)} / ${m3(k, 89, 0)}`);
   const p = (d) => H.map[addD(date, -d)] || {};
-  L.push(`Belastung (${WEB ? 'hansport, aus Garmin-Trainingslast' : 'athletedata'}): heute Fitness ${n1(row.ctl ?? p(1).ctl)}, Ermüdung ${n1(row.atl ?? p(1).atl)}, Form ${n1(row.tsb ?? p(1).tsb)}; vor 7 Tagen Fitness ${n1(p(7).ctl)}, vor 28 Tagen ${n1(p(28).ctl)}.`);
+  L.push(`Belastung (${WEB ? 'hansport, aus Strava Relative Effort bzw. pulsbasiert' : 'athletedata'}): heute Fitness ${n1(row.ctl ?? p(1).ctl)}, Ermüdung ${n1(row.atl ?? p(1).atl)}, Form ${n1(row.tsb ?? p(1).tsb)}; vor 7 Tagen Fitness ${n1(p(7).ctl)}, vor 28 Tagen ${n1(p(28).ctl)}.`);
   const nights = H.list.filter((r) => r.date <= date && r.sl && r.sl.total).slice(-7);
   L.push('Letzte Nächte (Datum = Aufwachtag): ' + nights.map((r) => `${r.date} ${hmm(r.sl.total)} h (Tief ${hmm(r.sl.deep || 0)}, REM ${hmm(r.sl.rem || 0)}, Score ${r.sl.score ?? '–'}, ${r.sl.start}–${r.sl.end})`).join('; '));
   const w = latest(H.list, 'weight', date);

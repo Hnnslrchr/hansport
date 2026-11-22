@@ -2,7 +2,7 @@
 // Alle Sammlungen kommen in einem Stück von /api/db (privater Speicher), Änderungen werden gebündelt gesendet.
 import { kvGet, kvSet } from '../platform.js';
 
-const st = { colls: null, etag: null, loading: null, subs: new Map(), queue: [], timer: null, flushing: null, loadedOnce: false };
+const st = { colls: null, etag: null, loading: null, subs: new Map(), queue: [], timer: null, flushing: null, loadedOnce: false, tries: 0, retryAt: 0 };
 
 export class DbError extends Error { constructor(code, message) { super(message || code); this.code = code; } }
 
@@ -70,7 +70,8 @@ function applyLocal(path, op) {
 
 function schedule() {
   clearTimeout(st.timer);
-  st.timer = setTimeout(flush, st.queue.length > 300 ? 0 : 350);
+  // Änderungen etwas länger sammeln: weniger Schreibvorgänge, weniger Konflikte zwischen Geräten
+  st.timer = setTimeout(flush, st.retryAt > Date.now() ? st.retryAt - Date.now() : st.queue.length > 300 ? 0 : 1200);
 }
 
 async function flush() {
@@ -81,21 +82,35 @@ async function flush() {
   const last = new Map();
   for (const q of batch) last.set(q.path, q);
   const ops = [...last.values()].map((q) => (q.op === 'del' ? { path: q.path, op: 'del' } : { path: q.path, op: 'set', data: q.data }));
+  // große Änderungen (z. B. Neuberechnung aller Monate) in Paketen bis ca. 2,5 MB senden
+  const parts = [];
+  { let cur = [], size = 0; for (const o of ops) { const n = JSON.stringify(o).length; if (cur.length && size + n > 2_500_000) { parts.push(cur); cur = []; size = 0; } cur.push(o); size += n; } if (cur.length) parts.push(cur); }
   st.flushing = (async () => {
-    let r;
-    try {
-      r = await fetch('/api/db', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ops }), credentials: 'same-origin' });
-    } catch (e) { throw new DbError('unavailable', 'Keine Verbindung'); }
-    if (r.status === 401) { toLogin(); throw new DbError('unauthorized', 'Bitte anmelden'); }
-    const j = await r.json().catch(() => null);
-    if (!r.ok) throw new DbError(r.status === 413 ? 'invalid_argument' : r.status >= 500 ? 'server_unavailable' : 'invalid_argument', (j && j.error && j.error.message) || 'Speichern fehlgeschlagen (' + r.status + ')');
-    const foreign = j.prev && st.etag && j.prev !== st.etag;
-    st.etag = j.etag || null;
+    let foreign = false, noTag = false;
+    for (const part of parts) {
+      let r;
+      try {
+        r = await fetch('/api/db', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ops: part }), credentials: 'same-origin' });
+      } catch (e) { throw new DbError('unavailable', 'Keine Verbindung'); }
+      if (r.status === 401) { toLogin(); throw new DbError('unauthorized', 'Bitte anmelden'); }
+      const j = await r.json().catch(() => null);
+      if (!r.ok) throw new DbError(r.status === 413 ? 'invalid_argument' : r.status >= 500 ? 'server_unavailable' : 'invalid_argument', (j && j.error && j.error.message) || 'Speichern fehlgeschlagen (' + r.status + ')');
+      if (j.prev && st.etag && j.prev !== st.etag) foreign = true;
+      if (!j.etag) noTag = true;
+      st.etag = j.etag || null;
+    }
     persist();
-    if (foreign || !j.etag) load({ force: true }).catch(() => {});
+    if (foreign || noTag) load({ force: true }).catch(() => {});
   })();
-  try { await st.flushing; for (const q of batch) q.resolve(); }
-  catch (e) { for (const q of batch) q.reject(e); }
+  try { await st.flushing; st.tries = 0; st.retryAt = 0; for (const q of batch) q.resolve(); }
+  catch (e) {
+    // Speicher kurz beschäftigt oder keine Verbindung: nichts verwerfen, später erneut senden
+    if ((e.code === 'server_unavailable' || e.code === 'unavailable') && (st.tries || 0) < 8) {
+      st.tries = (st.tries || 0) + 1;
+      st.retryAt = Date.now() + Math.min(60000, 1500 * 2 ** (st.tries - 1));
+      st.queue.unshift(...batch);
+    } else { st.tries = 0; st.retryAt = 0; for (const q of batch) q.reject(e); }
+  }
   finally { st.flushing = null; if (st.queue.length) schedule(); }
 }
 

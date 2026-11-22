@@ -8,6 +8,7 @@ import { encode, decode } from '../geo.js';
 import { powerCurve } from '../analysis.js';
 import { normalizeStreams, normalizeStrength } from '../strava.js';
 import { garmin, fit } from './api.js';
+import { recomputeHealth } from './health.js';
 
 export { normalizeStreams, normalizeStrength };
 export const SERVER = 'Garmin';
@@ -199,7 +200,11 @@ export function perfFromSummary(a, s) {
   };
 }
 
+// Garmin drosselt bei vielen Abrufen hintereinander (HTTP 429): Abstand halten und bei Drosselung pausieren
+let fitPauseUntil = 0;
+export const fitPaused = () => fitPauseUntil > Date.now();
 async function fillFromFit(ids, progress, max = 40) {
+  if (fitPaused()) return;
   const list = ids.slice(0, max);
   const changes = new Map(), touched = new Set();
   let n = 0;
@@ -217,9 +222,10 @@ async function fillFromFit(ids, progress, max = 40) {
       if (s.sets && s.sets.length && !getState().strength[id]) setDoc('strength/' + id, { sets: s.sets, src: 'garmin', at: Date.now() });
     } catch (e) {
       if (e && (e.code === 'unauthorized' || e.code === 'garmin_not_configured' || e.code === 'garmin_key_invalid')) break;
+      if (e && (e.code === 'garmin_rate_limited' || e.status === 429)) { fitPauseUntil = Date.now() + Math.max(60, e.retry || 0) * 1000; break; }
       changes.set(id, { ...a, polyTry: (a.polyTry || 0) + 1, polyAt: Date.now() }); touched.add(monthOf(a));
     }
-    await sleep(150);
+    await sleep(700);
   }
   writeMonths(changes, touched);
 }
@@ -254,6 +260,7 @@ export function sync({ full = false } = {}) {
       const r = await syncActivities(full, progress);
       try { await syncZones(); } catch (e) { /* optional */ }
       patchDoc('meta/sync', { lastSync: Date.now(), src: 'garmin', lastFull: full ? Date.now() : (st.meta.sync || {}).lastFull || null, lastResult: r });
+      try { recomputeHealth(); } catch (e) { console.warn(e); }
       setStatus({ syncing: false, progress: null, mcp: 'ok' });
       toast(r.added ? r.added + ' neue Aktivität' + (r.added === 1 ? '' : 'en') + ' von Garmin' : r.linked ? r.linked + ' Aktivitäten mit Garmin verknüpft' : 'Alles aktuell' + (r.updated ? ' (' + r.updated + ' aktualisiert)' : ''));
       analyzeQueue();
@@ -279,9 +286,10 @@ export async function analyzeQueue(max = 20) {
       for (const ch of Object.values(getState().acts)) for (const a of ch.items || []) if (wantsPoly(a)) list.push(a);
       if (!list.length) break;
       list.sort((p, q) => (p.start < q.start ? 1 : -1));
+      if (fitPaused()) { setStatus({ analysis: { step: 'Garmin pausiert kurz', n: 0, total: list.length } }); await sleep(fitPauseUntil - Date.now() + 500); continue; }
       setStatus({ analysis: { step: 'Strecken laden', n: 0, total: list.length } });
       await fillFromFit(list.map((a) => a.id), (step, n) => setStatus({ analysis: { step, n, total: list.length } }), max);
-      await sleep(800);
+      await sleep(2000);
     }
   } finally { analyzing = false; setStatus({ analysis: null }); }
 }
@@ -290,7 +298,7 @@ export async function analyzeQueue(max = 20) {
 const polyBusy = new Set();
 export async function ensurePoly(id) {
   const a = findAct(id);
-  if (!a || a.poly || !a.gid || a.noGps || a.trainer || NO_GPS.has(a.type) || polyBusy.has(id)) return (a && a.poly) || null;
+  if (!a || a.poly || !a.gid || a.noGps || a.trainer || NO_GPS.has(a.type) || polyBusy.has(id) || fitPaused()) return (a && a.poly) || null;
   const n = a.polyTry || 0;
   if (n && Date.now() - (a.polyAt || 0) < Math.min(7, 2 ** n) * 3600000) return null;
   polyBusy.add(id);

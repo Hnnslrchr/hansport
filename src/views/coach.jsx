@@ -15,6 +15,7 @@ import { dsport, sportLabel } from '../sports.js';
 import { useStatus, useData } from './common.jsx';
 import { readiness, recommendation, insights, nutrition, contextPack } from '../coach-logic.js';
 import { GROUP } from './metric.jsx';
+import { ReadinessCard } from './readiness.jsx';
 import { WEB } from '../env.js';
 
 const n0 = (v) => num(v, 0), n1 = (v) => num(v, 1);
@@ -163,7 +164,6 @@ export function Coach() {
   const rec = useMemo(() => recommendation(R, H, today, plan), [R, plan]);
   const ins = useMemo(() => insights(H, today, goalWeight), [H, today, goalWeight]);
   const nut = useMemo(() => nutrition(H, today, plan, goalWeight), [H, today, plan, goalWeight]);
-  const [showCalc, setShowCalc] = useState(false);
   const [allIns, setAllIns] = useState(false);
   const [busy, setBusy] = useState(false);
   const goals = Object.values(S.goals || {}).map((g) => g.name || g.kind).filter(Boolean);
@@ -187,30 +187,8 @@ export function Coach() {
       <div class="hp-hero" style="padding-top:18px"><div style="flex:1"><div class="hp-lbl">Training · Gesundheit · Ernährung</div><h1>Coach</h1></div>
         <button type="button" class="chip2" onClick={() => openSheet(() => <MemorySheet />)} aria-label="Gedächtnis und Ziele"><Ico n="brain" />Gedächtnis</button></div>
       <div class="md-body coach">
-        {/* 1. Tagesbriefing */}
-        {R ? (
-          <div class={'t2 g-erh glow multi brief' + (R.score >= 75 || R.score < 40 ? ' gl-hi' : '')} style="--gc1:var(--glow-erh);--ga1:var(--ga-erh);--gc2:var(--glow-herz);--ga2:var(--ga-herz);--gc3:var(--glow-sch);--ga3:var(--ga-sch)">
-            <div class="t2-h"><Ico n="battery-full" />Bereitschaft heute<span class="src">eigene Berechnung</span></div>
-            <div class="row2" style="align-items:flex-end;justify-content:space-between;margin-top:8px">
-              <div class="big2">{R.score}<small>/100</small></div>
-              <div class="sub2" style="text-align:right">{R.level.label}{R.date !== today ? <br /> : null}{R.date !== today ? 'Werte vom ' + dShort(R.date) : ''}</div>
-            </div>
-            <RangeScale min={0} max={100} lo={0} hi={R.score} ticks={['0', '40', '55', '75', '100']} markers={[{ v: R.score }]} />
-            <div class="rec-t">{rec.title}</div>
-            <div class="sub2" style="color:var(--ink)">{rec.detail}</div>
-            {rec.planNote ? <div class="sub2" style="margin-top:4px">{rec.planNote}</div> : null}
-            <ul class="why">{rec.reasons.concat(rec.notes).map((x) => <li>{x}</li>)}</ul>
-            <button type="button" class="linkbtn" onClick={() => setShowCalc(!showCalc)}>{showCalc ? 'Berechnung ausblenden' : 'Berechnung ansehen'}</button>
-            {showCalc ? (
-              <div class="calc">
-                <table><tbody>
-                  {R.parts.map((p) => <tr><td>{p.label}</td><td>{p.val}<div class="sub2">{p.base}</div></td><td>{p.formula} = <b>{n0(p.pts)}</b></td><td>× {n0(p.w * 100)} %</td></tr>)}
-                </tbody></table>
-                <div class="sub2" style="margin-top:6px">Summe = {R.score}. Stufen: ab 75 hart · 55–74 normal · 40–54 locker · darunter Ruhe. {R.missing.length ? 'Fehlt heute: ' + R.missing.join(', ') + ' – Gewichte auf die übrigen verteilt. ' : ''}{R.athletedata ? `Zum Vergleich athletedata: ${R.athletedata.rec}/100.` : ''} Eigene Berechnung, keine medizinische Bewertung.</div>
-              </div>
-            ) : null}
-          </div>
-        ) : <div class="empty2">Für das Tagesbriefing fehlen heute Garmin-Werte (HRV, Ruhepuls, Schlaf). Ziehe auf „Heute“ zum Abgleichen.</div>}
+        {/* 1. Tagesbriefing: dieselbe Bereitschaft wie auf „Heute“ */}
+        <div class="coach-rdy"><ReadinessCard H={H} date={today} plan={plan} full /></div>
 
         {/* 2. Erkenntnisse */}
         {ins.length ? (

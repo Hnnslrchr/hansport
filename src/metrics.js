@@ -4,14 +4,14 @@ import { num, int } from './format.js';
 import { WEB } from './env.js';
 
 const hm = (m) => (m == null ? '–' : Math.floor(m / 60) + ':' + String(Math.round(m % 60)).padStart(2, '0'));
-const pmcSrc = (r) => (r && r.src && r.src.pmc === 'hansport' ? 'hansport' : 'athletedata');
+const pmcSrc = (r) => (WEB || (r && r.src && r.src.pmc === 'hansport') ? 'hansport' : 'athletedata');
 const band = (b) => (b && b[0] != null && b[1] != null ? [b[0] - b[1], b[0] + b[1]] : null);
 
 export const M = {
   rec: {
-    label: 'Erholung', icon: 'battery-full', unit: '/100', src: (r) => (r && r.rec == null && r.rdy != null ? 'hansport' : 'athletedata'), get: (r) => (r.rec != null ? r.rec : r.rdy), fmt: (v) => int(v), max: 100, better: 'up',
-    explain: (WEB ? 'Seit dem Wechsel zur eigenständigen App berechnet hansport diesen Wert selbst (0–100): HRV und Ruhepuls der Nacht im Vergleich zu deinen letzten 60 Tagen, Schlaf im Verhältnis zum Bedarf und die Form, gewichtet 30/20/30/20 %. Ältere Tage: ' : '') + 'Wert von athletedata (0–100): vergleicht HRV und Ruhepuls der letzten Nacht mit deinem eigenen Normalbereich der letzten 60 Tage und berücksichtigt Schlaf und Schlafschuld. Er beantwortet eine Frage: wie hart du heute trainieren kannst. Er ist nicht derselbe Wert wie in der Garmin-App.',
-    say: (v, r) => (v == null ? null : ({ go_hard: 'Bereit für eine harte Einheit.', steady: 'Normales Training passt.', easy: 'Heute eher locker.', rest: 'Heute eher Erholung.' }[r.verdict] || { hart: 'Bereit für eine harte Einheit.', normal: 'Normales Training passt.', locker: 'Heute eher locker.', ruhe: 'Heute eher Erholung.' }[r.rdyK] || null)),
+    label: 'Bereitschaft', icon: 'battery-full', unit: '/100', src: (r) => (WEB || (r && r.rec == null && r.rdy != null) ? 'hansport' : 'athletedata'), get: (r) => (WEB ? r.rdy : r.rec != null ? r.rec : r.rdy), fmt: (v) => int(v), max: 100, better: 'up',
+    explain: WEB ? 'Von hansport berechnet (0–100) aus fünf Faktoren, jeweils verglichen mit deiner eigenen Basis der letzten 60 Tage: HRV 25 %, Schlaf 25 % (Dauer zum Bedarf und Schlafschuld der letzten 3 Nächte), Ruhepuls 15 %, Trainingsbelastung 20 % (7 zu 28 Tagen) und Body Battery beim Aufwachen 15 %. Fehlt ein Faktor, werden die Gewichte auf die übrigen verteilt. Ist der Ruhepuls oder die Atemfrequenz deutlich erhöht, ist höchstens „locker“ möglich. Ab 75 hart, 55–74 normal, 40–54 locker, darunter Ruhe. Eine Schätzung, keine medizinische Bewertung.' : 'Wert von athletedata (0–100): vergleicht HRV und Ruhepuls der letzten Nacht mit deinem eigenen Normalbereich der letzten 60 Tage und berücksichtigt Schlaf und Schlafschuld. Er beantwortet eine Frage: wie hart du heute trainieren kannst. Er ist nicht derselbe Wert wie in der Garmin-App.',
+    say: (v, r) => (v == null ? null : ({ go_hard: 'Bereit für eine harte Einheit.', steady: 'Normales Training passt.', easy: 'Heute eher locker.', rest: 'Heute eher Erholung.' }[WEB ? null : r.verdict] || { hart: 'Bereit für eine harte Einheit.', normal: 'Normales Training passt.', locker: 'Heute eher locker.', ruhe: 'Heute eher Erholung.' }[r.rdyK] || null)),
   },
   slScore: {
     label: 'Schlafscore', icon: 'half-moon', unit: '/100', src: (r) => (r.src && r.src.sleep) || 'garmin', get: (r) => r.slScore, fmt: (v) => int(v), max: 100, better: 'up',
@@ -20,7 +20,7 @@ export const M = {
   },
   sleep: {
     label: 'Schlafdauer', icon: 'half-moon', unit: 'h', src: (r) => (r.src && r.src.sleep) || 'garmin', get: (r) => r.slMin, fmt: hm, better: 'up', normal: (r) => (r.need ? [r.need - 30, r.need + 30] : null),
-    explain: 'Gemessene Schlafzeit der Nacht vor dem Datum (das Datum ist der Aufwachtag). Der Schlafbedarf ist ' + (WEB ? 'Garmins' : 'athletedatas') + ' Schätzung aus deinen eigenen Nächten, die Schlafschuld die Summe der Fehlzeit der letzten Tage.',
+    explain: 'Gemessene Schlafzeit der Nacht vor dem Datum (das Datum ist der Aufwachtag). Der Schlafbedarf ist ' + (WEB ? 'Garmins' : 'athletedatas') + ' Schätzung aus deinen eigenen Nächten, die Schlafschuld die Summe der Fehlzeit der letzten 3 Nächte.',
     say: (v, r) => (v == null ? null : r.debt != null && r.debt > 60 ? 'Schlafschuld ' + hm(r.debt) + ' h.' : r.need ? (v >= r.need ? 'Bedarf (' + hm(r.need) + ' h) gedeckt.' : hm(r.need - v) + ' h unter deinem Bedarf.') : null),
   },
   hrv: {
@@ -53,8 +53,12 @@ export const M = {
     explain: 'Schritte des ganzen Tages laut Garmin. Das Ziel passt Garmin automatisch an deine letzten Tage an.',
     say: (v, r) => (v == null ? null : r.g && r.g.stepsGoal ? (v >= r.g.stepsGoal ? 'Tagesziel erreicht.' : 'Ziel ' + int(r.g.stepsGoal) + '.') : null),
   },
+  akcal: {
+    label: 'Kalorien', icon: 'fire-flame', unit: 'kcal', src: () => 'acts', get: (r) => r.akcal, fmt: (v) => int(v), better: null,
+    explain: 'Summe der Kalorien deiner Aktivitäten an diesem Tag, wie sie Garmin (früher Strava) für jede Einheit angibt. Der Ruheumsatz ist nicht enthalten; ihn zeigt hansport nur, wenn Garmin einen Wert liefert. Kalorienangaben sind Schätzungen der Geräte.',
+  },
   kcal: {
-    label: 'Aktive Kalorien', icon: 'fire-flame', unit: 'kcal', src: () => 'garmin', get: (r) => (r.g && !r.g.partial ? r.g.act : null), fmt: (v) => int(v), better: null,
+    label: 'Aktive Kalorien (Garmin)', icon: 'fire-flame', unit: 'kcal', src: () => 'garmin', get: (r) => (r.g && !r.g.partial ? r.g.act : null), fmt: (v) => int(v), better: null,
     explain: 'Kalorien, die du über den Grundumsatz hinaus verbrauchst – laut Garmin aus Bewegung und Training. Der Grundumsatz ist nicht enthalten, deshalb ist die Summe kleiner als dein Tagesverbrauch.',
   },
   im: {
@@ -62,7 +66,7 @@ export const M = {
     explain: 'Garmins Intensitätsminuten: mittlere Belastung zählt einfach, hohe doppelt. Die WHO empfiehlt mindestens 150 pro Woche; Garmin setzt dein Wochenziel entsprechend.',
   },
   vo2: {
-    label: 'VO2max Rad', icon: 'graph-up', unit: 'ml/kg/min', src: () => 'garmin', get: (r) => r.vo2, fmt: (v) => int(v), better: 'up', sparse: true,
+    label: 'VO2max', icon: 'graph-up', unit: 'ml/kg/min', src: () => 'garmin', get: (r) => r.vo2, fmt: (v) => int(v), better: 'up', sparse: true,
     explain: 'Maximale Sauerstoffaufnahme, von Garmin aus Rad-Einheiten mit Puls und Leistung geschätzt (kein Labormesswert). Höher heißt mehr aerobe Kapazität. Aussagekräftig ist vor allem der eigene Verlauf über Wochen.',
     say: (v, r) => (v == null ? null : r.fitAge ? 'Fitnessalter laut Garmin: ' + r.fitAge + '.' : null),
   },
@@ -92,15 +96,15 @@ export const M = {
   },
   ctl: {
     label: 'Fitness', icon: 'graph-up', unit: 'CTL', src: pmcSrc, get: (r) => r.ctl, fmt: (v) => num(v, 1), better: 'up',
-    explain: 'Chronische Trainingsbelastung: gewichteter Schnitt deiner Belastung der letzten 42 Tage, ' + (WEB ? 'bis zum Wechsel von athletedata aus deinen Strava-Einheiten berechnet, seitdem von hansport aus der Garmin-Trainingslast (an die bisherige Reihe angeschlossen und auf sie skaliert).' : 'von athletedata aus deinen Strava-Einheiten berechnet.') + ' Kein Prozentwert, nur mit dir selbst vergleichbar.',
+    explain: 'Chronische Trainingsbelastung: gewichteter Schnitt deiner Belastung der letzten 42 Tage, ' + (WEB ? 'von hansport selbst berechnet. Belastung je Einheit: Strava Relative Effort; wo er fehlt, pulsbasiert (Dauer und Durchschnittspuls zwischen Ruhe- und Maximalpuls), auf die Relative-Effort-Skala geeicht.' : 'von athletedata aus deinen Strava-Einheiten berechnet.') + ' Kein Prozentwert, nur mit dir selbst vergleichbar.',
   },
   atl: {
-    label: 'Belastung', icon: 'fire-flame', unit: 'ATL', src: pmcSrc, get: (r) => r.atl, fmt: (v) => num(v, 1), better: null,
-    explain: 'Akute Belastung: gewichteter Schnitt der letzten 7 Tage. Liegt sie deutlich über der Fitness, bist du ermüdet.',
+    label: 'Ermüdung', icon: 'fire-flame', unit: 'ATL', src: pmcSrc, get: (r) => r.atl, fmt: (v) => num(v, 1), better: null,
+    explain: 'Akute Belastung (Ermüdung): gewichteter Schnitt der letzten 7 Tage. Liegt sie deutlich über der Fitness, bist du ermüdet.',
   },
   tsb: {
     label: 'Form', icon: 'compass', unit: 'TSB', src: pmcSrc, get: (r) => r.tsb, fmt: (v) => (v > 0 ? '+' : '') + num(v, 1), better: null,
-    explain: 'Fitness minus Belastung. Positiv heißt ausgeruht, um 0 neutral, unter −10 produktiv ermüdet, unter −30 sehr hohe Belastung. Die Werte stabilisieren sich erst nach rund 42 Tagen Daten.',
+    explain: 'Fitness minus Ermüdung. Positiv heißt ausgeruht, um 0 neutral, unter −10 produktiv ermüdet, unter −30 sehr hohe Belastung. Die Werte stabilisieren sich erst nach rund 42 Tagen Daten.',
   },
 };
 

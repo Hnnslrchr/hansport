@@ -35,6 +35,12 @@ export function startAlign() {
   const schedule = () => { if (!raf) raf = requestAnimationFrame(alignAll); };
   new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true, characterData: true });
   addEventListener('resize', schedule);
+  // Umbrüche durch Container-Abfragen lösen keine DOM-Änderung aus: Größenänderungen der Kacheln beobachten
+  if (typeof ResizeObserver !== 'undefined') {
+    const ro = new ResizeObserver(schedule);
+    const seen = new WeakSet();
+    new MutationObserver(() => { for (const g of document.querySelectorAll(GRIDS)) if (!seen.has(g)) { seen.add(g); ro.observe(g); } }).observe(document.body, { childList: true, subtree: true });
+  }
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(schedule);
   schedule();
 }

@@ -1,6 +1,7 @@
 // Zentraler Zustand. Zwei Schichten: Strava-Kopie (acts, perf, strength, meta)
 // und deine Ergänzungen (edits, manual, gym, journal, …). Ergänzungen liegen in
 // eigenen Dokumenten und werden beim erneuten Import nie überschrieben.
+import { autoGear } from './gear.js';
 import { caps, kvGet, kvSet, isTransient } from './platform.js';
 import { mapSport } from './sports.js';
 import { clusterRoutes } from './routes.js';
@@ -189,12 +190,13 @@ export function derived() {
   const frame = {};
   for (const b of gearMeta.bikes || []) frame[b.id] = b.frame;
   const assign = gearMeta.assign || {};
+  const seed = (st.settings.main || {}).gearSeed || null;
   const list = [];
   const byId = {};
   for (const chunk of Object.values(st.acts)) {
     for (const a of chunk.items || []) {
       const e = st.edits[a.id] || {};
-      const gearId = e.gearId || assign[a.id] || a.gear || null;
+      const gearId = e.gearId === 'none' ? null : e.gearId || assign[a.id] || a.gear || null;
       const m = mapSport(a.type, { trainer: a.trainer, bikeFrame: frame[gearId] });
       const x = {
         ...a, src: 'strava', origin: a.gid && String(a.id).startsWith('gc') ? 'garmin' : 'strava',
@@ -204,6 +206,8 @@ export function derived() {
         excluded: !!e.excluded, edited: Object.keys(e).length > 0, hasGps: !!a.poly, hasHr: a.re != null || a.hrAvg != null,
         name: e.name || a.name,
       };
+      // ohne Ausrüstung: MTB → Scalpel, Rennrad draußen → SuperSix (in der Aktivität änderbar)
+      if (!x.gear && e.gearId !== 'none') { const ag = autoGear(seed, x); if (ag) { x.gear = ag; x.gearAuto = true; } }
       list.push(x); byId[x.id] = x;
     }
   }

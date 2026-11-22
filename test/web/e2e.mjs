@@ -57,13 +57,19 @@ try {
   check(st.garmin.some((a) => a.poly && a.sport === 'road'), 'neue Ausfahrt hat Strecke aus FIT');
   check(st.note === 'Testnotiz bleibt erhalten', 'eigene Notiz bleibt erhalten');
 
-  // 4) Gesundheit
+  // 4) Gesundheit (athletedata ist standardmäßig aus und wird unter Datenquellen eingeschaltet)
+  if (AD) {
+    await page.evaluate(() => { window.__spur.setTab('more'); window.__spur.push('sources'); });
+    await page.waitForSelector('text=athletedata verwenden');
+    await page.click('label[for="src-ad"]');
+    await sleep(800);
+  }
   await page.evaluate(() => window.__spur.syncHealth({}));
   const hs = await page.evaluate(() => { const H = window.__spur.getState().health; const days = {}; for (const d of Object.values(H)) Object.assign(days, d.days); const t = Object.keys(days).sort().pop(); const x = days[t]; const meta = window.__spur.getState().meta.health; return { t, x, meta }; });
   if (AD) {
     const ad = await page.evaluate(() => { const H = window.__spur.getState().health; let n = 0, rec = 0, tl = 0; for (const d of Object.values(H)) for (const x of Object.values(d.days)) { n++; if (x.rec != null) rec++; if (x.sl && x.sl.tl) tl++; } return { n, rec, tl, meta: window.__spur.getState().meta.health }; });
     check(ad.meta.v === 5 && ad.rec > 0, 'athletedata: Gesundheit wie bisher (v' + ad.meta.v + ', ' + ad.rec + ' Tage mit Erholung, ' + ad.tl + ' mit Schlafphasen, Hinweise: ' + JSON.stringify(ad.meta.notes || null) + ')');
-    await page.evaluate(() => { window.__spur.setTab('more'); window.__spur.push('settings'); });
+    await page.evaluate(() => { window.__spur.setTab('more'); window.__spur.push('sources'); });
     await page.waitForSelector('text=athletedata prüfen');
     await page.click('text=athletedata prüfen');
     await page.waitForSelector('text=/Abo aktiv bis 28.11.2026/', { timeout: 8000 });
@@ -71,12 +77,15 @@ try {
     check(true, 'athletedata-Verbindung geprüft (Abo, verbundene Apps)');
   } else {
   check(hs.x && hs.x.hrv != null && hs.x.rhr != null && hs.x.sl && hs.x.sl.total, 'Tageswerte heute (' + hs.t + '): HRV ' + (hs.x && hs.x.hrv) + ', Ruhepuls ' + (hs.x && hs.x.rhr) + ', Schlaf ' + (hs.x && hs.x.sl && hs.x.sl.total));
-  check(hs.x && hs.x.src && hs.x.src.pmc === 'hansport' && hs.x.ctl != null && hs.meta.pmc && Math.abs(hs.meta.pmc.k - 0.71) < 0.05, 'Form berechnet: CTL ' + (hs.x && hs.x.ctl) + ' TSB ' + (hs.x && hs.x.tsb) + ' k=' + (hs.meta.pmc && hs.meta.pmc.k));
-  check(hs.x && hs.x.rdy != null, 'Erholung berechnet: ' + (hs.x && hs.x.rdy) + ' (' + (hs.x && hs.x.rdyK) + ')');
+  check(hs.x && hs.x.src && hs.x.src.pmc === 'hansport' && hs.x.ctl != null && hs.meta.pmc && hs.meta.pmc.n && hs.meta.pmc.n.re > 50, 'Form selbst berechnet: CTL ' + (hs.x && hs.x.ctl) + ' TSB ' + (hs.x && hs.x.tsb) + ' Lasten ' + JSON.stringify(hs.meta.pmc && hs.meta.pmc.n) + ' k=' + (hs.meta.pmc && hs.meta.pmc.k));
+  check(hs.x && hs.x.rdy != null, 'Bereitschaft berechnet: ' + (hs.x && hs.x.rdy) + ' (' + (hs.x && hs.x.rdyK) + ')');
+  check(hs.x && hs.x.akcal != null && hs.x.rb, 'Kalorien aus Aktivitäten und 60-Tage-Basis: ' + (hs.x && hs.x.akcal) + ' kcal, ' + JSON.stringify(hs.x && hs.x.rb && Object.keys(hs.x.rb)));
+  const gs = await page.evaluate(() => { const S = window.__spur.getState(); const seed = (S.settings.main || {}).gearSeed; const L = window.__spur.derived().list; return { seed, auto: L.filter((a) => a.gearAuto).length }; });
+  check(gs.seed && gs.seed.ids && gs.seed.ids.scalpel && gs.seed.ids.supersix, 'Ausrüstung mit Startwerten angelegt: ' + JSON.stringify(gs.seed && gs.seed.ids) + ', automatisch zugeordnet: ' + gs.auto);
   check(hs.x && hs.x.base && hs.x.base.hrv, 'Basiswerte berechnet: ' + JSON.stringify(hs.x && hs.x.base));
   const wi = await page.evaluate(() => { const H = window.__spur.getState().health; return (H['2026-11'] && H['2026-11'].days['2026-11-21']) || {}; });
   check(wi.wi && wi.wi.weight === 78.1 && wi.wi.fatPct === 17.1 && wi.weight === 78.1 && wi.src.weight === 'withings', 'Withings: ' + JSON.stringify(wi.wi));
-  check(hs.meta.v === 6 && hs.meta.src === 'garmin', 'meta/health v6 (' + JSON.stringify(hs.meta.notes || null) + ')');
+  check(hs.meta.v === 7 && hs.meta.src === 'garmin', 'meta/health v7 (' + JSON.stringify(hs.meta.notes || null) + ')');
   }
 
   // 5) Aktivität mit Zeitreihen aus FIT
@@ -92,13 +101,13 @@ try {
   await page.evaluate(() => { window.__spur.setTab('today'); });
   await sleep(1200);
   await page.screenshot({ path: 'test/shots/web-today.png' });
-  await page.evaluate(() => { window.__spur.setTab('more'); window.__spur.push('settings'); });
-  await page.waitForSelector('text=Verbindungen');
+  await page.evaluate(() => { window.__spur.setTab('more'); window.__spur.push('sources'); });
+  await page.waitForSelector('text=Datenquellen');
   await page.waitForSelector('text=Verbindung prüfen');
   await page.click('text=Verbindung prüfen');
   await page.waitForSelector('text=verbunden', { timeout: 8000 });
   await page.screenshot({ path: 'test/shots/web-settings.png' });
-  check(true, 'Einstellungen: Garmin-Verbindung geprüft');
+  check(true, 'Datenquellen: Garmin-Verbindung geprüft');
 
   // 6b) Coach: Werkzeug-Schleife über /api/coach (Stream)
   await page.evaluate(() => window.__spur.setTab('coach'));

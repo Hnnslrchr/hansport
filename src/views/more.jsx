@@ -18,6 +18,7 @@ import { doSync } from './overview.jsx';
 import { hav } from '../geo.js';
 import { WEB } from '../env.js';
 import { WebConnections, WebImport } from '../web/views.jsx';
+import { gearInfo, gearTotals, odometerAt, gearSeed, LOG_KINDS, logKindName } from '../gear.js';
 
 export function More() {
   return (
@@ -27,10 +28,11 @@ export function More() {
         <Cell onClick={() => push('overview')} title="Erkenntnisse und Entwicklung" sub="Vergleiche, Strecken, Anstiege, Ziele" />
         <Cell onClick={() => push('reviews')} title="Monatsrückblicke" sub="Jeder Monat mit Vergleich zum Vormonat" />
         <Cell onClick={() => push('goals')} title="Ziele" sub="Höhenmeter, Stunden, Anstiege …" />
-        <Cell onClick={() => push('gear')} title="Ausrüstung" sub="Räder, Boards, Schuhe, Wartung" />
+        <Cell onClick={() => push('gear')} title="Ausrüstung" sub="Räder, Kilometer, Wartung" />
         <Cell onClick={() => push('gym-exercises')} title="Krafttraining" sub="Übungen, Fortschritt, Vorlagen" />
       </div>
       <div class="list" style="margin-top:14px">
+        {WEB ? <Cell onClick={() => push('sources')} title="Datenquellen" sub="Status und letzter Abgleich" /> : null}
         <Cell onClick={() => push('settings')} title="Zonen und Einstellungen" />
         <Cell onClick={() => push('share')} title="Karte teilen" sub="Mit Privatzone um Start und Ziel" />
         <Cell onClick={() => push('data')} title="Daten und Datenschutz" sub="Export, Löschen, Abgleich" />
@@ -91,36 +93,51 @@ function GoalSheet({ g }) {
 
 // ---------- Ausrüstung ----------
 const GEAR_KINDS = [['bike', 'Rad'], ['snowboard', 'Snowboard'], ['splitboard', 'Splitboard'], ['shoes', 'Schuhe'], ['other', 'Sonstiges']];
+const NB = ' ';
+const hmin2 = (sec) => { const m = Math.round((sec || 0) / 60); return [Math.floor(m / 60), m % 60]; };
+const asOfTxt = (d) => new Date(d + 'T12:00:00').toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric' });
+function GearStats({ t }) {
+  const [hh, mm] = hmin2(t.mov);
+  return (
+    <div class="stats two gear-stats">
+      <Stat v={km(t.dist)} u="km" l="draußen" />
+      <Stat v={hm(t.gain)} u="Hm" l="Höhenmeter" />
+      <div class="stat"><div class="v">{int(hh)}<small>h</small> {mm}<small>min</small></div><div class="l">Fahrzeit</div></div>
+      <Stat v={int(t.n)} l={t.n === 1 ? 'Fahrt' : 'Fahrten'} />
+    </div>
+  );
+}
+function statsFor(list, id, g) {
+  if (g && g.base) return gearTotals(list, id, g);
+  const acts = list.filter((a) => a.gear === id && !a.excluded && !a.indoor);
+  return { dist: acts.reduce((s, a) => s + (a.dist || 0), 0), gain: acts.reduce((s, a) => s + (a.gain || 0), 0), mov: acts.reduce((s, a) => s + (a.mov || 0), 0), n: acts.length, acts };
+}
 export function GearList() {
   const d = useData();
   const S = getState();
   const meta = S.meta.gear || {};
-  const stats = useMemo(() => {
-    const m = {};
-    for (const a of d.list) {
-      if (!a.gear || a.excluded) continue;
-      const x = m[a.gear] || (m[a.gear] = { n: 0, dist: 0, days: new Set(), last: null, gain: 0, mov: 0 });
-      x.n++; x.dist += a.indoor ? 0 : a.dist || 0; x.gain += a.indoor ? 0 : a.gain || 0; x.mov += a.mov || 0; x.days.add(a.date); if (!x.last || a.date > x.last) x.last = a.date;
-    }
-    return m;
-  }, [d.v]);
   const own = Object.values(S.gear);
   const row = (id, name, sub, retired) => {
-    const x = stats[id];
-    const due = dueOf(S.gear[id] || (S.settings.main && S.settings.main.gearMeta && S.settings.main.gearMeta[id]), x, d, id);
-    return <Cell onClick={() => push('gear-item', { id })} title={name + (retired ? ' (ausgemustert)' : '')} sub={(x ? km(x.dist) + ' km · ' + hm(x.gain) + ' Hm · ' + hTot(x.mov) + ' h · ' + x.n + ' Einheiten' : 'noch keine Einheit') + (sub ? ' · ' + sub : '')} right={due ? <span class={'pill' + (due.over ? ' warn' : '')}>{due.text}</span> : null} />;
+    const { g } = gearInfo(id);
+    const t = statsFor(d.list, id, g);
+    const due = dueOf(g, null, d, id);
+    const [hh] = hmin2(t.mov);
+    return <Cell onClick={() => push('gear-item', { id })} title={name + (retired ? ' (ausgemustert)' : '')} sub={(t.n ? km(t.dist) + NB + 'km · ' + hm(t.gain) + NB + 'Hm · ' + int(hh) + NB + 'h · ' + t.n + ' ' + (t.n === 1 ? 'Fahrt' : 'Fahrten') : 'noch keine Fahrt') + (sub ? ' · ' + sub : '')} right={due ? <span class={'pill' + (due.over ? ' warn' : '')}>{due.text}</span> : null} />;
   };
+  const bikesOwn = own.filter((g) => g.kind === 'bike');
+  const other = own.filter((g) => g.kind !== 'bike');
+  const seed = gearSeed();
   return (
     <div class="view">
       <Top title="Ausrüstung" actions={<button type="button" class="iconbtn" aria-label="Ausrüstung hinzufügen" onClick={() => openSheet(() => <GearSheet />)}><Icon.plus /></button>} />
-      <Section title="Räder aus Strava">
-        {(meta.bikes || []).length ? <div class="list">{meta.bikes.map((b) => row(b.id, b.name, b.frame ? frameName(b.frame) : '', b.retired))}</div> : <div class="card p small muted">Nach dem ersten Abgleich erscheinen hier deine Räder.</div>}
+      <Section title="Räder">
+        {(meta.bikes || []).length || bikesOwn.length ? <div class="list">{(meta.bikes || []).map((b) => row(b.id, b.name, b.frame ? frameName(b.frame) : '', b.retired))}{bikesOwn.map((g) => row(g.id, g.name, g.role === 'mtb' ? 'MTB' : g.role === 'road' ? 'Rennrad' : ''))}</div> : <div class="card p small muted">Noch keine Räder.</div>}
       </Section>
       {(meta.shoes || []).length ? <Section title="Schuhe aus Strava"><div class="list">{meta.shoes.map((b) => row(b.id, b.name, '', b.retired))}</div></Section> : null}
-      <Section title="Eigene Ausrüstung" action="Hinzufügen" onAction={() => openSheet(() => <GearSheet />)}>
-        {own.length ? <div class="list">{own.map((g) => row(g.id, g.name, GEAR_KINDS.find((k) => k[0] === g.kind)?.[1]))}</div> : <div class="card p small muted">Snowboard, Splitboard oder Wanderschuhe anlegen und in der Aktivität zuordnen. Spur zählt dann Tage, Touren und Kilometer.</div>}
+      <Section title="Weitere Ausrüstung" action="Hinzufügen" onAction={() => openSheet(() => <GearSheet />)}>
+        {other.length ? <div class="list">{other.map((g) => row(g.id, g.name, GEAR_KINDS.find((k) => k[0] === g.kind)?.[1]))}</div> : <div class="card p small muted">Zum Beispiel Snowboard oder Wanderschuhe.</div>}
       </Section>
-      <div class="subhead" style="margin-top:8px">Kilometer nur draußen. Die Zuordnung aus Strava bleibt erhalten, deine eigene Zuordnung in der Aktivität hat Vorrang.</div>
+      <div class="subhead" style="margin-top:8px">{seed ? 'Startwerte Stand ' + asOfTxt(seed.asOf) + ', danach kommt jede neue Fahrt dazu. Ohne Zuordnung: MTB → Scalpel, Rennrad draußen → SuperSix. ' : ''}Indoor zählt nicht. Die Zuordnung änderst du in der Aktivität.</div>
       <div class="spacer" />
     </div>
   );
@@ -142,51 +159,63 @@ function dueOf(g, x, d, id) {
 export function GearItem({ id }) {
   const d = useData();
   const S = getState();
-  const meta = S.meta.gear || {};
-  const sb = [...(meta.bikes || []), ...(meta.shoes || [])].find((b) => b.id === id);
-  const own = S.gear[id];
-  const extra = (S.settings.main && S.settings.main.gearMeta && S.settings.main.gearMeta[id]) || {};
-  const g = own || { ...extra, id, name: sb ? sb.name : id };
+  const { own, extra, sb, g } = gearInfo(id);
+  const t = statsFor(d.list, id, g);
   const acts = d.list.filter((a) => a.gear === id && !a.excluded);
-  const A = aggregate(acts);
   const due = dueOf(g, null, d, id);
-  // Letzter Service: jüngster Wartungseintrag oder Neustart der Erinnerung
-  const lastSvc = [...(g.log || []).map((l) => l.date), g.reminder && g.reminder.since].filter(Boolean).sort().pop() || null;
-  const movAll = acts.reduce((s2, a) => s2 + (a.mov || 0), 0);
-  const sinceA = lastSvc ? acts.filter((a) => a.date >= lastSvc) : [];
-  const sinceD = sinceA.reduce((s2, a) => s2 + (a.indoor ? 0 : a.dist || 0), 0), sinceG = sinceA.reduce((s2, a) => s2 + (a.indoor ? 0 : a.gain || 0), 0), sinceM = sinceA.reduce((s2, a) => s2 + (a.mov || 0), 0);
+  // Letzter Service: jüngster Eintrag „Service“ oder Neustart der Erinnerung
+  const lastSvc = [...(g.log || []).filter((l) => !l.kind || l.kind === 'service').map((l) => l.date), g.reminder && g.reminder.since].filter(Boolean).sort().pop() || null;
+  const sinceA = lastSvc ? acts.filter((a) => a.date >= lastSvc && !a.indoor) : [];
+  const sinceT = { dist: sinceA.reduce((s2, a) => s2 + (a.dist || 0), 0), gain: sinceA.reduce((s2, a) => s2 + (a.gain || 0), 0), mov: sinceA.reduce((s2, a) => s2 + (a.mov || 0), 0), n: sinceA.length };
   const save = (p) => {
     if (own) patchDoc('gear/' + id, p);
     else { const cur = S.settings.main || {}; setDoc('settings/main', { ...cur, gearMeta: { ...(cur.gearMeta || {}), [id]: { ...extra, ...p } } }); }
   };
   const [note, setNote] = useState('');
+  const [kind, setKind] = useState('service');
+  const [ldate, setLdate] = useState(today());
   const log = (g.log || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+  // Abgleich mit dem Strava-Gesamtwert (Stand des letzten Strava-Abgleichs)
+  const stravaAt = S.meta.gear && S.meta.gear.at ? new Date(S.meta.gear.at).toISOString().slice(0, 10) : null;
+  const cmp = sb && sb.dist && stravaAt ? odometerAt(d.list, id, g, stravaAt) - sb.dist : null;
+  const add = () => { const text = note.trim(); if (!text) return; save({ log: [...(g.log || []), { date: ldate, kind, text, km: Math.round(odometerAt(d.list, id, g, ldate) / 1000) }] }); setNote(''); toast('Eingetragen'); };
   return (
     <div class="view">
-      <Top title="Ausrüstung" actions={own ? <button type="button" class="iconbtn" aria-label="Bearbeiten" onClick={() => openSheet(() => <GearSheet g={own} />)}>✎</button> : null} />
-      <div class="pad" style="margin-bottom:8px"><h1 style="font-family:var(--display);font-size:var(--fs-t1)">{g.name}</h1><div class="small muted">{sb ? 'aus Strava' + (sb.dist ? ' · Strava-Gesamt ' + km(sb.dist) + ' km' : '') : GEAR_KINDS.find((k) => k[0] === g.kind)?.[1]}</div></div>
-      <div class="card p"><div class="stats"><Stat v={km(A.dist)} u="km" l="draußen" /><Stat v={hm(A.gain)} u="Hm" l="Aufstieg" /><Stat v={hTot(movAll)} u="h" l="Fahrzeit" /><Stat v={A.count} l="Einheiten" /></div></div>
+      <Top title="Ausrüstung" actions={own ? <button type="button" class="iconbtn" aria-label="Bearbeiten" onClick={() => openSheet(() => <GearSheet g={own} />)}><Icon.edit /></button> : null} />
+      <div class="pad" style="margin-bottom:8px"><h1 style="font-family:var(--display);font-size:var(--fs-t1)">{g.name}</h1><div class="small muted">{[sb ? 'aus Strava' : GEAR_KINDS.find((k) => k[0] === g.kind)?.[1], g.role === 'mtb' ? 'MTB' : g.role === 'road' ? 'Rennrad' : null, g.base ? 'Startwerte ' + asOfTxt(g.base.asOf) + (t.newN ? ' + ' + t.newN + ' neue ' + (t.newN === 1 ? 'Fahrt' : 'Fahrten') : '') : null].filter(Boolean).join(' · ')}</div></div>
+      <div class="card p"><GearStats t={t} /></div>
+      {cmp != null ? <div class="subhead" style="margin-top:8px">{Math.abs(cmp) < 1000 ? 'Stimmt mit Strava überein: ' + km(sb.dist) + NB + 'km, Stand ' + asOfTxt(stravaAt) + '.' : 'Abweichung zu Strava: ' + (cmp > 0 ? '+' : '−') + km(Math.abs(cmp)) + NB + 'km. Strava ' + km(sb.dist) + NB + 'km, Stand ' + asOfTxt(stravaAt) + '.'}</div> : null}
       <Section title={'Seit dem letzten Service' + (lastSvc ? ' · ' + dateMid(lastSvc) : '')}>
         <div class="card p">
-          {lastSvc ? <div class="stats"><Stat v={km(sinceD)} u="km" l="draußen" /><Stat v={hm(sinceG)} u="Hm" l="Aufstieg" /><Stat v={hTot(sinceM)} u="h" l="Fahrzeit" /><Stat v={sinceA.length} l="Einheiten" /></div>
-            : <div class="small muted">Noch kein Service eingetragen. Ein Eintrag in den Wartungsnotizen oder „erledigt“ bei der Erinnerung setzt den Zähler.</div>}
+          {lastSvc ? <GearStats t={sinceT} /> : <div class="small muted">Noch kein Service eingetragen.</div>}
         </div>
       </Section>
       <Section title="Erinnerung">
         <div class="card p stack" style="gap:8px">
-          {due ? <div class="g-akt"><div class="small" style={due.over ? 'font-weight:600' : ''}>{due.over ? '⚠ ' : ''}{(g.reminder.what || 'Wartung')}: {due.text} (seit {g.reminder.since ? dateMid(g.reminder.since) : 'Beginn'})</div><GBar value={due.v} max={g.reminder.every} left={num(due.v, 0) + ' von ' + num(g.reminder.every, 0) + ' ' + ({ km: 'km', days: 'Tagen', tours: 'Touren' }[g.reminder.unit] || '')} right={Math.min(100, Math.round((due.v / g.reminder.every) * 100)) + ' %'} label={'Service-Intervall ' + Math.round((due.v / g.reminder.every) * 100) + ' Prozent'} /></div> : <div class="small muted">Keine Erinnerung gesetzt.</div>}
+          {due ? <div class="g-akt"><div class="small" style={due.over ? 'font-weight:600' : ''}>{(g.reminder.what || 'Wartung')}: {due.text}, seit {g.reminder.since ? dateMid(g.reminder.since) : 'Beginn'}</div><GBar value={due.v} max={g.reminder.every} left={num(due.v, 0) + ' von ' + num(g.reminder.every, 0) + ' ' + ({ km: 'km', days: 'Tagen', tours: 'Touren' }[g.reminder.unit] || '')} right={Math.min(100, Math.round((due.v / g.reminder.every) * 100)) + ' %'} label={'Service-Intervall ' + Math.round((due.v / g.reminder.every) * 100) + ' Prozent'} /></div> : <div class="small muted">Keine Erinnerung.</div>}
           <button type="button" class="btn sec2" onClick={() => openSheet(() => <ReminderSheet g={g} save={save} />)}>{due ? 'Erinnerung ändern' : 'Erinnerung einrichten'}</button>
-          {due ? <button type="button" class="btn" onClick={() => { save({ reminder: { ...g.reminder, since: today() }, log: [...(g.log || []), { date: today(), text: (g.reminder.what || 'Wartung') + ' erledigt' }] }); toast('Erledigt, Zähler neu gestartet'); }}>Erledigt – Zähler neu starten</button> : null}
+          {due ? <button type="button" class="btn" onClick={() => { save({ reminder: { ...g.reminder, since: today() }, log: [...(g.log || []), { date: today(), kind: 'service', text: (g.reminder.what || 'Wartung') + ' erledigt', km: Math.round(odometerAt(d.list, id, g, today()) / 1000) }] }); toast('Erledigt, Zähler neu gestartet'); }}>Erledigt – Zähler neu starten</button> : null}
         </div>
       </Section>
-      <Section title="Wartungsnotizen">
-        <div class="card p stack" style="gap:8px">
-          {log.map((l, i) => <div class="row small"><span class="muted" style="min-width:72px">{dateShort(l.date)}</span><span class="grow">{l.text}</span><button type="button" class="btn ghost" aria-label="Notiz löschen" onClick={() => save({ log: (g.log || []).filter((x) => x !== l) })}>×</button></div>)}
-          <div class="row"><input class="input grow" aria-label="Neue Wartungsnotiz" value={note} onInput={(e) => setNote(e.target.value)} placeholder="z. B. Kette gewechselt" /><button type="button" class="btn" disabled={!note.trim()} onClick={() => { save({ log: [...(g.log || []), { date: today(), text: note.trim() }] }); setNote(''); }}>Hinzufügen</button></div>
+      <Section title="Wartungslogbuch">
+        <div class="card p stack" style="gap:10px">
+          {log.length ? log.map((l) => (
+            <div class="logrow">
+              <div class="grow"><div class="small"><b>{logKindName(l.kind)}</b> · {dateMid(l.date)}{l.km != null ? ' · bei ' + int(l.km) + NB + 'km' : ''}</div><div class="small muted">{l.text}</div></div>
+              <button type="button" class="iconbtn" aria-label={'Eintrag vom ' + dateMid(l.date) + ' löschen'} onClick={() => save({ log: (g.log || []).filter((x) => x !== l) })}><Icon.trash /></button>
+            </div>
+          )) : <div class="small muted">Noch keine Einträge.</div>}
+          <Seg value={kind} onChange={setKind} label="Art" options={LOG_KINDS} />
+          <div class="row" style="gap:8px">
+            <div class="field" style="flex:0 0 auto"><label for="lg-d">Datum</label><input id="lg-d" class="input" type="date" value={ldate} max={today()} onInput={(e) => setLdate(e.target.value || today())} /></div>
+            <div class="field grow"><label for="lg-t">Was wurde gemacht?</label><input id="lg-t" class="input" value={note} onInput={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} placeholder="z. B. Kette gewechselt" /></div>
+          </div>
+          <div class="tiny faint">Kilometerstand am {dateMid(ldate)}: {km(odometerAt(d.list, id, g, ldate))}{NB}km, wird automatisch eingetragen.</div>
+          <button type="button" class="btn" disabled={!note.trim()} onClick={add}>Hinzufügen</button>
         </div>
       </Section>
-      <Section title="Einheiten">
-        <div class="list">{acts.slice(0, 30).map((a) => <ActRow a={a} />)}</div>
+      <Section title="Fahrten">
+        {acts.length ? <div class="list">{acts.slice(0, 30).map((a) => <ActRow a={a} />)}</div> : <div class="card p small muted">{g.base ? 'Neue Fahrten erscheinen hier.' : 'Noch keine Fahrten.'}</div>}
       </Section>
       {own ? <div class="pad" style="margin-top:12px"><button type="button" class="btn danger" onClick={() => { delDoc('gear/' + id); pop(); }}>Ausrüstung löschen</button></div> : null}
       <div class="spacer" />
@@ -320,7 +349,7 @@ export function Settings() {
   return (
     <div class="view">
       <Top title="Einstellungen" />
-      {WEB ? <WebConnections /> : null}
+      {WEB ? <div class="list" style="margin-bottom:8px"><Cell onClick={() => push('sources')} title="Datenquellen" sub="Garmin, Withings, Strava, athletedata" /></div> : null}
       <Section title="Zonen-Verlauf">
         <div class="list">
           {hist.slice().reverse().map((z) => (

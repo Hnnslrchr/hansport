@@ -7,7 +7,8 @@ import { TimeChart, Line, Points, Bars, Band, RefLine, Seg2, Legend } from '../u
 import { daily, weekly, stats, niceTicks, tOf, addD, dShort, hmm, nightMin, DAY, isoOf } from '../viz-data.js';
 import { healthDays, healthMeta, todayLocal } from '../health.js';
 import { M, latest } from '../metrics.js';
-import { num } from '../format.js';
+import { num, lastMeas, dayMon, NB } from '../format.js';
+import { DayBars, MeasureLine } from '../ui/r5.jsx';
 import { push } from '../nav.js';
 import { getState } from '../store.js';
 import { useStatus, useData } from './common.jsx';
@@ -31,11 +32,12 @@ function statusOf(H, k, today) {
   const p28 = daily(H.list, m.get, addD(l.date, -28), addD(l.date, -1)).map((q) => q.v);
   let range = null, rangeSrc = null;
   const b = l.r.base && { rhr: l.r.base.rhr, hrv: l.r.base.hrv, resp: l.r.base.resp }[k];
-  if (b) { range = bandOf(b); rangeSrc = WEB ? 'Basis 60 Tage' : 'athletedata'; } else if (prev.length >= 10) { const mu = mean(prev), s = sd(prev); range = [mu - s, mu + s]; rangeSrc = 'eigene 90 Tage'; }
+  if (b) { range = bandOf(b); rangeSrc = WEB ? 'eigene 90 Tage' : 'athletedata'; } else if (prev.length >= 10) { const mu = mean(prev), s = sd(prev); range = [mu - s, mu + s]; rangeSrc = 'eigene 90 Tage'; }
+  if (k === 'akcal') { range = null; rangeSrc = null; }
   const pos = range ? (l.v < range[0] ? 'low' : l.v > range[1] ? 'high' : 'in') : null;
   const bad = pos && pos !== 'in' && (m.better === 'up' ? pos === 'low' : m.better === 'down' ? pos === 'high' : true);
   let trend = null;
-  if (p28.length >= 7) { const mu = mean(p28), s = sd(p28) || 1, d = l.v - mu; trend = { d, mu, dir: Math.abs(d) < 0.5 * s ? 0 : d > 0 ? 1 : -1 }; }
+  if (p28.length >= 7 && k !== 'akcal') { const mu = mean(p28), s = sd(p28) || 1, d = l.v - mu; trend = { d, mu, dir: Math.abs(d) < 0.5 * s ? 0 : d > 0 ? 1 : -1 }; }
   const stale = age > (FRESH[k] || 3);
   return { k, m, v: l.v, date: l.date, r: l.r, age, stale, range, rangeSrc, pos, bad, trend };
 }
@@ -43,29 +45,30 @@ function statusOf(H, k, today) {
 const POS = { low: 'darunter', in: 'im Bereich', high: 'darüber' };
 const GL = ['rhr', 'hrv', 'resp', 'sleep', 'slScore', 'bb', 'stress', 'weight'];
 
-const GL_NAME = { resp: 'Atmung', sleep: 'Schlaf', slScore: 'Score', bb: 'Body Battery', weight: 'Gewicht' };
+const GL_NAME = { resp: 'Atmung', sleep: 'Schlaf', slScore: 'Schlafscore', bb: 'Body Battery', weight: 'Gewicht' };
 function Glance({ S }) {
   const act = S.filter((s) => s && !s.stale && s.pos);
   const inR = act.filter((s) => s.pos === 'in').length;
   const odd = act.filter((s) => s.bad);
   const txt = !act.length ? 'Noch zu wenige Daten für eine Einordnung.'
-    : `${inR} von ${act.length} Werten liegen in deinem persönlichen Normalbereich.` + (odd.length ? ' Auffällig: ' + odd.map((s) => `${s.m.label} ${POS[s.pos]} (${s.m.fmt(s.v)}${s.m.unit && s.m.unit[0] !== '/' ? ' ' + s.m.unit : ''})`).join(', ') + '.' : ' Nichts fällt aus dem Rahmen.');
+    : `${inR} von ${act.length} Werten liegen in deinem persönlichen Normalbereich.` + (odd.length ? ' Auffällig: ' + odd.map((s) => `${s.m.label} ${POS[s.pos]}`).join(', ') + '.' : ' Nichts fällt aus dem Rahmen.');
   const gs = [...new Set(S.filter(Boolean).map((s) => GROUP[s.k] || 'trn'))].filter((g) => g !== 'trn').slice(0, 3);
   const gv = gs.map((g, i) => `--gc${i + 1}:var(--glow-${g});--ga${i + 1}:var(--ga-${g})`).join(';');
   return (
     <div class={'t2 glance glow multi' + (odd.length ? ' gl-hi' : '')} style={gv}>
       <div class="lbl2">Zustand heute</div>
-      <div class="gl-row" role="img" aria-label={txt}>
+      <p class="say2" style="margin-top:6px">{txt}</p>
+      <div class="gl-list">
         {S.filter(Boolean).map((s) => (
-          <div class={'gl-it g-' + (GROUP[s.k] || 'trn') + (s.stale ? ' stale' : '') + (s.bad ? ' bad' : '')}>
-            <span class="gl-ic"><Ico n={s.m.icon} /></span>
-            <span class="gl-st">{s.stale ? '–' : s.pos === 'high' ? '▲' : s.pos === 'low' ? '▼' : s.pos === 'in' ? '●' : '·'}</span>
-            <span class="gl-n" lang="de">{GL_NAME[s.k] || s.m.label.split(' ')[0]}</span>
-          </div>
+          <button type="button" class={'gl-li g-' + (GROUP[s.k] || 'trn') + (s.stale ? ' stale' : s.bad ? ' bad' : '')} onClick={() => push('metric', { k: s.k })} aria-label={s.m.label + ' ' + s.m.fmt(s.v) + ' ' + (s.m.unit || '') + ', ' + (s.stale ? lastMeas(s.date) : s.pos ? POS[s.pos] : 'ohne Bereich')}>
+            <Ico n={s.m.icon} />
+            <span class="nm">{GL_NAME[s.k] || s.m.label}</span>
+            <span class="vv">{s.m.fmt(s.v)}{s.m.unit && s.m.unit !== '/100' ? <small>{s.m.unit}</small> : null}</span>
+            <span class="ps">{s.stale ? lastMeas(s.date) : s.pos ? (s.pos === 'high' ? '▲ ' : s.pos === 'low' ? '▼ ' : '● ') + POS[s.pos] : 'ohne Bereich'}</span>
+          </button>
         ))}
       </div>
-      <p class="say2" style="margin-top:10px">{txt}</p>
-      <div class="sub2">● im Bereich · ▲ darüber · ▼ darunter · – veraltet. Bereich: {WEB ? 'Basis der letzten 60 Tage' : 'athletedata-Basis'} (Ruhepuls, HRV, Atmung), sonst Mittel ± 1 SD deiner letzten 90 Tage.</div>
+      <div class="sub2" style="margin-top:10px">Bereich: Mittel ± 1 Standardabweichung deiner {WEB ? 'eigenen' : ''} letzten 90 Tage{WEB ? '' : ' (Ruhepuls, HRV, Atmung von athletedata)'}.</div>
     </div>
   );
 }
@@ -110,14 +113,14 @@ function MiniLine({ pts, w = 300, hgt = 64 }) {
 function Tile({ s, wide, children, sub }) {
   if (!s) return null;
   const { m } = s;
-  const tr = s.trend;
+  const tr = s.stale ? null : s.trend;
   return (
     <button type="button" class={'t2 htile glow g-' + (GROUP[s.k] || 'trn') + (wide ? ' w2' : '') + (s.bad ? ' gl-hi' : '')} style={wide ? '--gx:100%;--gy:100%;--gs:55% 120%' : '--gx:100%;--gy:100%'} onClick={(e) => heroOpen(e.currentTarget, m.label + ', Details', () => push('metric', { k: s.k }))} aria-label={m.label + ', Details'}>
-      <div class="t2-h"><Ico n={m.icon} />{m.label}{s.pos && !s.stale ? <span class={'pos ' + s.pos + (s.bad ? ' bad' : '')}>{POS[s.pos]}</span> : s.stale ? <span class="pos">veraltet</span> : null}</div>
+      <div class="t2-h"><Ico n={m.icon} /><span class="lb">{m.label}</span>{s.pos && !s.stale ? <span class={'pos ' + s.pos + (s.bad ? ' bad' : '')}>{POS[s.pos]}</span> : null}</div>
       <div class="hv"><span class="mid2">{m.fmt(s.v)}<small>{m.unit}</small></span>
         {tr ? <span class="trd" title="gegenüber Ø der letzten 28 Tage">{tr.dir > 0 ? '↑' : tr.dir < 0 ? '↓' : '→'} {tr.d > 0 ? '+' : tr.d < 0 ? '−' : '±'}{m.fmt(Math.abs(tr.d))}</span> : null}</div>
-      {children}
-      <div class="sub2">{sub || (s.age > 1 ? dShort(s.date) : 'heute')}{tr ? ' · vs. Ø 28 T ' + m.fmt(tr.mu) : ''}</div>
+      {children ? <div class="t2-g">{children}</div> : null}
+      <div class="sub2">{sub || lastMeas(s.date)}{tr ? ' · Ø 28 Tage ' + m.fmt(tr.mu) : ''}</div>
     </button>
   );
 }
@@ -165,12 +168,12 @@ function Relations({ H, end, acts }) {
   const R = useMemo(() => {
     if (k === 'load') {
       const P = [];
-      for (const r of H.list) { if (r.date > end || r.hrv == null && r.rec == null) continue; const nx = H.map[addD(r.date, 1)]; if (!nx || nx.hrv == null) continue; P.push({ x: r.load || 0, y: nx.hrv, date: r.date }); }
+      for (const r of H.list) { if (r.date > end || r.hrv == null) continue; const nx = H.map[addD(r.date, 1)]; if (!nx || nx.hrv == null) continue; P.push({ x: r.load || 0, y: nx.hrv, date: r.date }); }
       return { P, xl: 'Belastung am Tag', xu: 'Last', yl: 'HRV am Folgetag', yu: 'ms', g: 'erh', hi: (x, d) => `An Tagen mit hoher Belastung (oberes Drittel, ab ${num(x, 0)}) lag deine HRV am Folgetag im Mittel ${d}ms ${''}gegenüber den Tagen mit der geringsten Belastung.` };
     }
     if (k === 'sleep') {
-      const P = []; for (const r of H.list) if (r.date <= end && r.sl && r.sl.total && r.rec != null) P.push({ x: r.sl.total / 60, y: r.rec, date: r.date });
-      return { P, xl: 'Schlafdauer', xu: 'h', yl: 'Erholung am Morgen', yu: '/100', g: 'sch', hi: (x, d) => `Nach den längsten Nächten (oberes Drittel, ab ${num(x, 1)} h) lag deine Erholung im Mittel ${d}Punkte gegenüber den kürzesten Nächten.` };
+      const P = []; for (const r of H.list) { const v = M.rec.get(r); if (r.date <= end && r.sl && r.sl.total && v != null) P.push({ x: r.sl.total / 60, y: v, date: r.date }); }
+      return { P, xl: 'Schlafdauer', xu: 'h', yl: 'Bereitschaft am Morgen', yu: '/100', g: 'sch', hi: (x, d) => `Nach den längsten Nächten (oberes Drittel, ab ${num(x, 1)} h) lag deine Bereitschaft im Mittel ${d}Punkte gegenüber den kürzesten Nächten.` };
     }
     // Trainingsumfang je Woche ↔ Gewichtsänderung zur Vorwoche
     const wk = (iso) => { const d = new Date(tOf(iso)); return isoOf(tOf(iso) - ((d.getUTCDay() + 6) % 7) * DAY); };
@@ -195,7 +198,7 @@ function Relations({ H, end, acts }) {
   }
   return (
     <div class={'g-' + R.g}>
-      <Seg2 value={k} onChange={(v) => { setK(v); setSel(null); }} label="Zusammenhang" options={[['load', 'Last → HRV'], ['sleep', 'Schlaf → Erholung'], ['weight', 'Umfang → Gewicht']]} />
+      <Seg2 value={k} onChange={(v) => { setK(v); setSel(null); }} label="Zusammenhang" options={[['load', 'Last → HRV'], ['sleep', 'Schlaf → Bereitschaft'], ['weight', 'Umfang → Gewicht']]} />
       <div class="t2" style="padding:8px 10px 6px;margin-top:10px">
         {P.length >= 3 ? (
           <TimeChart height={190} x={{ min: xt.min, max: xt.max, ticks: xt.ticks.map((v) => ({ t: v, label: num(v, k === 'weight' ? 0 : 0) })) }} y={yt} unit={R.yu} label={R.yl + ' gegen ' + R.xl} snap={P} sel={sel} onSel={setSel} marks={(q) => [{ v: q.v, color: 'var(--c)' }]} animKey={k}
@@ -212,7 +215,7 @@ const WDN = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 function Weekdays({ H, end }) {
   const [k, setK] = useState('sleep');
   const [sel, setSel] = useState(null);
-  const cfg = { sleep: { get: (r) => (r.sl && r.sl.total ? r.sl.total : null), fmt: (v) => hmm(v), unit: 'h', g: 'sch', lab: 'Schlaf in der Nacht auf', better: 1 }, rec: { get: (r) => r.rec, fmt: n0, unit: '/100', g: 'erh', lab: 'Erholung am', better: 1 }, hrv: { get: (r) => r.hrv, fmt: n0, unit: 'ms', g: 'erh', lab: 'HRV am', better: 1 } }[k];
+  const cfg = { sleep: { get: (r) => (r.sl && r.sl.total ? r.sl.total : null), fmt: (v) => hmm(v), unit: 'h', g: 'sch', lab: 'Schlaf in der Nacht auf', better: 1 }, rec: { get: (r) => M.rec.get(r), fmt: n0, unit: '/100', g: 'erh', lab: 'Bereitschaft am', better: 1 }, hrv: { get: (r) => r.hrv, fmt: n0, unit: 'ms', g: 'erh', lab: 'HRV am', better: 1 } }[k];
   const by = [[], [], [], [], [], [], []];
   for (const q of daily(H.list, cfg.get, addD(end, -89), end)) by[(new Date(q.t).getUTCDay() + 6) % 7].push(q.v);
   const rows = by.map((a, i) => ({ t: i + 1, i, n: a.length, v: a.length ? mean(a) : null }));
@@ -221,7 +224,7 @@ function Weekdays({ H, end }) {
   const y = niceTicks(0, Math.max(1, ...valid.map((r) => r.v)), 4, true);
   return (
     <div class={'g-' + cfg.g}>
-      <Seg2 value={k} onChange={(v) => { setK(v); setSel(null); }} label="Kennzahl" options={[['sleep', 'Schlaf'], ['rec', 'Erholung'], ['hrv', 'HRV']]} />
+      <Seg2 value={k} onChange={(v) => { setK(v); setSel(null); }} label="Kennzahl" options={[['sleep', 'Schlaf'], ['rec', 'Bereitschaft'], ['hrv', 'HRV']]} />
       <div class="t2" style="padding:8px 10px 6px;margin-top:10px">
         {valid.length >= 4 ? (
           <TimeChart height={160} x={{ min: 0.5, max: 7.5, ticks: rows.map((r) => ({ t: r.t, label: WDN[r.i] })) }} y={y} unit={cfg.unit} label="Mittel je Wochentag" snap={valid} sel={sel} onSel={setSel} animKey={k} yFmt={k === 'sleep' ? (v) => num(v / 60, 0) : (v) => num(v, 0)}
@@ -241,14 +244,18 @@ export function Health() {
   const d = useData();
   const scroller = useRef();
   usePullToRefresh(scroller, refreshAll);
-  const S = useMemo(() => Object.fromEntries(['rhr', 'hrv', 'resp', 'vo2', 'sleep', 'slScore', 'bb', 'stress', 'rec', 'weight', 'fatPct', 'muscle', 'steps', 'im', 'kcal', 'tsb'].map((k) => [k, statusOf(H, k, today)])), [H, today]);
+  const S = useMemo(() => Object.fromEntries(['rhr', 'hrv', 'resp', 'vo2', 'sleep', 'slScore', 'bb', 'stress', 'rec', 'weight', 'fatPct', 'muscle', 'steps', 'im', 'kcal', 'akcal', 'tsb'].map((k) => [k, statusOf(H, k, today)])), [H, today]);
   const last7 = (get) => { const o = []; for (let j = 6; j >= 0; j--) { const r = H.map[addD(today, -j)]; o.push({ v: r ? get(r) : null }); } return o; };
+  const days7 = (get) => { const o = []; for (let j = 6; j >= 0; j--) { const dd = addD(today, -j); const r = H.map[dd]; o.push({ date: dd, v: r ? get(r) ?? null : null }); } return o; };
+  const weekIdx = (new Date(today + 'T12:00:00').getDay() + 6) % 7;
+  const weekDays = (get) => { const o = []; for (let j = 0; j < 7; j++) { const dd = addD(today, j - weekIdx); const r = H.map[dd]; o.push({ date: dd, v: dd > today ? null : r ? get(r) ?? null : null }); } return o; };
+  const week7 = (get) => weekDays(get).reduce((t, x) => t + (x.v || 0), 0);
   const sl = S.sleep && S.sleep.r.sl;
   const times = daily(H.list, (r) => (r.sl && r.sl.start ? nightMin(r.sl.start) : null), addD(today, -13), today).map((q) => q.v);
   return (
     <div class="view root" ref={scroller}>
       <PtrIndicator />
-      <div class="hp-hero" style="padding-top:18px"><div style="flex:1"><div class="hp-lbl">{WEB ? 'Garmin · Withings' : 'Garmin · Withings · athletedata'}</div><h1>Gesundheit</h1></div></div>
+      <div class="hp-hero" style="padding-top:18px"><div style="flex:1"><div class="hp-lbl">{WEB ? 'Garmin · Withings · eigene Berechnung' : 'Garmin · Withings · athletedata'}</div><h1>Gesundheit</h1></div></div>
       <div class="md-body">
         {!H.list.length ? (getState().status.healthSyncing ? <div aria-busy="true" aria-label="Gesundheitsdaten werden geladen"><div class="skel skel-tile" /><div class="skel skel-tile" style="margin-top:var(--tile-gap)" /></div> : <div class="empty2">Noch keine Gesundheitsdaten abgeglichen. Ziehe nach unten zum Abgleichen.</div>) : (
           <Fragment>
@@ -265,9 +272,9 @@ export function Health() {
             <div class="h-grid">
               <Tile s={S.sleep} wide sub={sl ? `${sl.start || ''}–${sl.end || ''}${S.sleep.r.need ? ' · Bedarf ' + hmm(S.sleep.r.need) + ' h' : ''}` : null}>
                 {sl ? <Stages sl={sl} /> : null}
-                <MiniBars vals={last7((r) => (r.sl ? r.sl.total : null))} line={S.sleep && S.sleep.r.need} hgt={44} />
+                <DayBars items={days7((r) => (r.sl ? r.sl.total : r.slMin))} goal={S.sleep && S.sleep.r.need} goalLabel="Bedarf" fmt={hmm} unit="h" topFmt={(v) => Math.round(v / 60) + NB + 'h'} label="Schlafdauer, 7 Nächte" />
               </Tile>
-              <Tile s={S.slScore}><MiniBars vals={last7((r) => (r.sl ? r.sl.score : r.slScore))} w={150} hgt={44} max={100} /></Tile>
+              <Tile s={S.slScore}><DayBars items={days7((r) => (r.sl && r.sl.score != null ? r.sl.score : r.slScore))} max={100} label="Schlafscore, 7 Nächte" /></Tile>
               {times.length >= 5 ? (
                 <button type="button" class="t2 htile glow g-sch" style="--gx:100%;--gy:100%" onClick={() => push('metric', { k: 'sleep' })}>
                   <div class="t2-h"><Ico n="clock" />Einschlafzeit</div>
@@ -280,19 +287,20 @@ export function Health() {
             <div class="hsec"><Ico n="battery-full" />Erholung</div>
             <div class="h-grid">
               <Tile s={S.hrv} wide><MiniDots pts={daily(H.list, (r) => r.hrv, addD(today, -27), today)} band={S.hrv && S.hrv.range} /></Tile>
-              <Tile s={S.bb}><MiniBars vals={last7((r) => (r.g ? r.g.bbWake : null))} w={150} hgt={44} max={100} /></Tile>
-              <Tile s={S.stress}><MiniBars vals={last7((r) => (r.g && !r.g.partial ? r.g.stress : null))} w={150} hgt={44} max={100} /></Tile>
-              <Tile s={S.rec} wide><MiniBars vals={last7((r) => r.rec)} hgt={40} max={100} /></Tile>
+              <Tile s={S.bb}><DayBars items={days7((r) => (r.g ? r.g.bbWake : null))} max={100} label="Body Battery beim Aufwachen, 7 Tage" /></Tile>
+              <Tile s={S.stress}><DayBars items={days7((r) => (r.g && !r.g.partial ? r.g.stress : null))} max={100} label="Stress, 7 Tage" /></Tile>
+              <Tile s={S.rec} wide sub={S.rec ? lastMeas(S.rec.date) + ' · von hansport berechnet' : null}><DayBars items={days7((r) => M.rec.get(r))} max={100} label="Bereitschaft, 7 Tage" /></Tile>
             </div>
 
             <div class="hsec"><Ico n="weight" />Körper</div>
             <div class="h-grid">
-              <Tile s={S.weight} wide><MiniDots pts={daily(H.list, (r) => (r.wi ? r.wi.weight : null), addD(today, -180), today)} /></Tile>
+              <Tile s={S.weight} wide sub={S.weight ? lastMeas(S.weight.date) + (S.weight.r.wi && S.weight.r.wi.fatPct != null ? ' · Körperfett ' + num(S.weight.r.wi.fatPct, 1) + NB + '%' : '') : null}>{(() => { const pts = H.list.filter((r) => r.wi && r.wi.weight != null && r.date >= addD(today, -180)).map((r) => ({ date: r.date, v: r.wi.weight })); return pts.length > 1 ? <MeasureLine pts={pts} from={pts[0].date} to={today} goal={((getState().settings.main || {}).healthGoals || {}).weight} label={'Gewicht seit ' + dayMon(pts[0].date)} height={120} /> : null; })()}</Tile>
               <Tile s={S.fatPct}><MiniLine pts={daily(H.list, (r) => (r.wi ? r.wi.fatPct : null), addD(today, -180), today)} w={150} hgt={44} /></Tile>
               <Tile s={S.muscle}><MiniLine pts={daily(H.list, (r) => (r.wi ? r.wi.muscle : null), addD(today, -180), today)} w={150} hgt={44} /></Tile>
             </div>
 
             <div class="hsec"><Ico n="walking" />Aktivität und Training</div>
+            {S.akcal ? <div class="h-grid" style="margin-bottom:10px"><Tile s={S.akcal} wide sub={'Woche ' + num(week7((r) => r.akcal), 0) + NB + 'kcal · aus Aktivitäten' + (S.akcal.r.bmr != null ? ' · Ruhe ' + num(S.akcal.r.bmr, 0) + NB + 'kcal (Garmin)' : ' · Ruheumsatz: keine Quelle')}><DayBars items={weekDays((r) => r.akcal)} hlIndex={weekIdx} label="Kalorien aus Aktivitäten, diese Woche" unit="kcal" /></Tile></div> : null}
             <div class="list">
               {['steps', 'im', 'kcal', 'tsb'].map((k) => { const s = S[k]; const m = M[k]; return (
                 <button type="button" class="mrow" onClick={() => push('metric', { k })}>
@@ -315,7 +323,7 @@ export function Health() {
               <div class="mrow"><span class="ic"><Ico n="heart" /></span><span><div class="t1">Blutdruck</div><div class="t2">Kein Messgerät verbunden (z. B. Withings BPM).</div></span><span class="v hp-none">–</span></div>
               <div class="mrow"><span class="ic"><Ico n="droplet" /></span><span><div class="t1">SpO2</div><div class="t2">Garmin liefert derzeit keine Werte.</div></span><span class="v hp-none">–</span></div>
             </div>
-            <div class="sub2" style="padding:12px 2px 0">{meta.lastSync ? 'Zuletzt abgeglichen ' + new Date(meta.lastSync).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '. ' : ''}Automatischer Abgleich beim Öffnen und stündlich, solange hansport offen ist. Puls, Stress und Body Battery liefert athletedata nur als Tageswerte.</div>
+            <div class="sub2" style="padding:12px 2px 0">{meta.lastSync ? 'Zuletzt abgeglichen ' + new Date(meta.lastSync).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '. ' : ''}Automatischer Abgleich beim Öffnen und stündlich, solange hansport offen ist. {WEB ? 'Puls, Stress und Body Battery kommen von Garmin als Tageswerte.' : 'Puls, Stress und Body Battery liefert athletedata nur als Tageswerte.'}</div>
           </Fragment>
         )}
       </div>

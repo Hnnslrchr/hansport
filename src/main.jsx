@@ -4,6 +4,7 @@ import './styles.css';
 import './hp.css';
 import './hp2.css';
 import './r4.css';
+import './r5.css';
 import { navState, onNav, setTab, fromHash, push, pop } from './nav.js';
 import { boot, getState, subscribe, derived } from './store.js';
 import { sync, analyzeQueue } from './strava.js';
@@ -24,7 +25,7 @@ import { MapTab } from './views/mapview.jsx';
 import { GymSession, GymExercises, GymExercise, GymTemplates } from './views/gym.jsx';
 import { More, Goals, GearList, GearItem, Reviews, Review, Settings, DataView, ShareMap, Guide } from './views/more.jsx';
 import { WEB } from './env.js';
-import { webBoot } from './web/views.jsx';
+import { webBoot, Sources } from './web/views.jsx';
 import { startAlign } from './ui/align.js';
 
 // Aktivitäten mit Umschalter Liste | Karte
@@ -59,6 +60,7 @@ const VIEWS = {
   reviews: () => <Reviews />,
   review: (p) => <Review ym={p.ym} />,
   settings: () => <Settings />,
+  sources: () => <Sources />,
   data: () => <DataView />,
   share: () => <ShareMap />,
   guide: () => <Guide />,
