@@ -63,7 +63,15 @@ function* windows(from, to, len) {
 let running = null;
 export function syncHealth(opts = {}) {
   if (running) return running;
-  running = athletedataOn().then((on) => (on ? AD.syncHealth(opts) : doSync(opts))).finally(() => { running = null; });
+  running = athletedataOn().then(async (on) => {
+    if (!on) return doSync(opts);
+    try { return await AD.syncHealth(opts); }
+    catch (e) {
+      // athletedata-Schlüssel ungültig oder Dienst weg: direkt von Garmin (und Withings) holen
+      if (/^athletedata|^unauthorized_ad/.test((e && e.code) || '')) { adOn = false; globalThis.__hsFlags = { ...(globalThis.__hsFlags || {}), athletedata: false }; return doSync(opts); }
+      throw e;
+    }
+  }).finally(() => { running = null; });
   return running;
 }
 
