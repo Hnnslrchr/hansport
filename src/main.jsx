@@ -25,6 +25,7 @@ import { GymSession, GymExercises, GymExercise, GymTemplates } from './views/gym
 import { More, Goals, GearList, GearItem, Reviews, Review, Settings, DataView, ShareMap, Guide } from './views/more.jsx';
 import { WEB } from './env.js';
 import { webBoot } from './web/views.jsx';
+import { startAlign } from './ui/align.js';
 
 // Aktivitäten mit Umschalter Liste | Karte
 function ActivitiesRoot() {
@@ -135,6 +136,7 @@ function App() {
 }
 
 async function start() {
+  startAlign();
   if (WEB) webBoot();
   fromHash();
   // iOS: :active (Druck-Zustand) sofort beim Berühren

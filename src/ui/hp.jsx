@@ -117,8 +117,8 @@ export function Gauge({ min, max, value, size = 132, label, center, sub }) {
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={label} style="display:block;margin:0 auto">
       {ticks}{needle}
-      <text x={c} y={c + 4} text-anchor="middle" font-family="var(--display)" font-size={size * 0.24} font-weight="600" fill="currentColor" letter-spacing="-1">{center != null ? center : '–'}</text>
-      {sub ? <text x={c} y={c + size * 0.2} text-anchor="middle" font-size="11" letter-spacing="1" fill="currentColor" fill-opacity="0.6">{sub}</text> : null}
+      <text x={c} y={c + (sub ? 2 : 6)} text-anchor="middle" font-family="var(--display)" font-size={size * 0.24} font-weight="600" fill="currentColor" letter-spacing="-1">{center != null ? center : '–'}</text>
+      {sub ? <text x={c} y={c + size * 0.15} text-anchor="middle" font-size="9.5" font-weight="500" letter-spacing="0.6" fill="currentColor" fill-opacity="0.6">{sub}</text> : null}
       <text x={pt(a0, r)[0] + 2} y={size - 4} text-anchor="middle" font-size="11" fill="currentColor" fill-opacity="0.5">{min}</text>
       <text x={pt(a1, r)[0] - 2} y={size - 4} text-anchor="middle" font-size="11" fill="currentColor" fill-opacity="0.5">{max}</text>
     </svg>

@@ -1,6 +1,6 @@
 import { actIcon, dsport } from '../sports.js';
 import { h, Fragment } from 'preact';
-import { useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useData, useStatus } from './common.jsx';
 import { MapView } from '../ui/map.jsx';
 import HansportLogo from '../ui/HansportLogo.jsx';
@@ -10,7 +10,8 @@ import { decode } from '../geo.js';
 import { Tile, Head, Big, NoData, Chg, Rings, Bars, ScaleG, Gauge, ArcArea, Stages, Ico, SPORT_ICON, usePullToRefresh, PtrIndicator, srcName } from '../ui/hp.jsx';
 import { push, openSheet } from '../nav.js';
 import { getState } from '../store.js';
-import { sync } from '../strava.js';
+import * as Acts from '../strava.js';
+const { sync } = Acts;
 import { syncHealth, healthDays, healthMeta, todayLocal, explainHealth } from '../health.js';
 import { M, latest, series, formWord, hmin } from '../metrics.js';
 import { aggregate, addDays } from '../analysis.js';
@@ -136,6 +137,9 @@ export function RingsTile({ row, onOpen, v4 }) {
 function LastActivity({ d }) {
   const a = d.list.find((x) => !x.excluded);
   const pts = useMemo(() => (a && a.poly && !a.indoor ? decode(a.poly) : null), [a && a.id, a && a.poly]);
+  // Web-Version: fehlt die Strecke einer Garmin-Aktivität, sofort aus der Originaldatei holen
+  const wantMap = !!(a && !a.poly && a.gid && !a.indoor && !a.trainer && !a.noGps && a.dist > 0 && dsport(a) !== 'gym');
+  useEffect(() => { if (wantMap && Acts.ensurePoly) Acts.ensurePoly(a.id).catch(() => {}); }, [wantMap, a && a.id]);
   if (!a) return <Tile cls="w2 g-akt"><Head icon="activity" label="Letzte Aktivität" /><NoData text={'Noch keine Aktivitäten – gleiche ' + ACT_SRC + ' ab.'} /></Tile>;
   return (
     <Tile cls="w2 g-akt" style="--gx:100%;--gy:0%;--gs:60% 70%" onClick={() => push('activity', { id: a.id })} label={'Letzte Aktivität: ' + a.name}>
@@ -149,7 +153,7 @@ function LastActivity({ d }) {
             markers={[{ pt: pts[pts.length - 1], color: 'var(--ink)', ring: true, r: 4.5 }, { pt: pts[0], color: 'var(--ink)', r: 4.5 }]}
             label={'Karte der Strecke ' + a.name} attr={false} />
         </div>
-      ) : null}
+      ) : wantMap ? <div class="la-map skel" style="height:156px" aria-label="Karte wird geladen" /> : null}
       {pts && pts.length > 1 ? <div class="la-attr">{ATTRIBUTION}</div> : null}
       <div class="stats-mini">
         <div><b>{a.dist ? km(a.dist) : '–'}</b><span>{a.indoor ? 'km virtuell' : 'km'}</span></div>
@@ -265,7 +269,7 @@ function BBTile({ row, onOpen }) {
     <Tile cls={'g-erh' + (g.bbWake != null && g.bbWake < 30 ? ' gl-hi' : '')} style="--gx:50%;--gy:45%;--gs:70% 70%" onClick={() => onOpen('bb')} label="Body Battery, Details">
       <Head icon="flash" label="Body Battery" src={g.bbWake != null ? 'garmin' : null} />
       <Gauge min={0} max={100} value={g.bbWake} center={g.bbWake != null ? g.bbWake : '–'} sub="AUFWACHEN" size={124} label={'Body Battery beim Aufwachen ' + (g.bbWake ?? 'keine Daten')} />
-      <div class="hp-sub" style="text-align:center">{g.bbWake != null ? (g.bbCh != null ? '+' + g.bbCh + ' geladen · −' + (g.bbDr ?? '–') + ' verbraucht' : '') : 'keine Daten'}</div>
+      <div class="hp-sub">{g.bbWake != null ? (g.bbCh != null ? '+' + g.bbCh + ' geladen · −' + (g.bbDr ?? '–') + ' verbraucht' : '') : 'keine Daten'}</div>
     </Tile>
   );
 }
@@ -289,7 +293,7 @@ function Vo2Tile({ L, onOpen }) {
     <Tile cls="g-herz" style="--gx:50%;--gy:45%;--gs:70% 70%" onClick={() => onOpen('vo2')} label="VO2max, Details">
       <Head icon="graph-up" label="VO2max Rad" src={l ? 'garmin' : null} />
       <Gauge min={30} max={70} value={l && l.v} center={l ? l.v : '–'} sub="ML/KG/MIN" size={124} label={'VO2max ' + (l ? l.v : 'keine Daten')} />
-      <div class="hp-sub" style="text-align:center">{l ? (l.r.fitAge ? 'Fitnessalter ' + l.r.fitAge : 'Schätzung von Garmin') : 'keine Daten'}</div>
+      <div class="hp-sub">{l ? (l.r.fitAge ? 'Fitnessalter ' + l.r.fitAge : 'Schätzung von Garmin') : 'keine Daten'}</div>
     </Tile>
   );
 }

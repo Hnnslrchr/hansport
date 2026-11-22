@@ -218,3 +218,11 @@ input:not([type="range"]):not([type="checkbox"]):not([type="radio"]), select, te
 .about { display: flex; flex-direction: column; align-items: flex-start; color: var(--ink); padding: var(--s-4) var(--page) var(--s-2); }
 .splash { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; background: #000; opacity: 1; transition: opacity 300ms ease; }
 .splash.out { opacity: 0; pointer-events: none; }
+
+/* Kachelraster: Inhalt beginnt oben (Knöpfe zentrieren sonst senkrecht), Kopfzeilen einer Reihe gleich hoch
+   (src/ui/align.js), Fußzeile unten bündig – so liegen Werte und Texte nebeneinander auf einer Linie. */
+.bento > .tile { display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch; }
+.bento > .tile > .hp-head { align-items: flex-start; }
+.bento > .tile > .hp-head .hp-lbl { padding-top: 2px; }
+.bento > .tile > .hp-head > .ico, .bento > .tile > .hp-head > svg { margin-top: 1px; flex: none; }
+.bento > .tile:not(.w2) > .hp-sub:last-child { margin-top: auto; padding-top: var(--s-2); }

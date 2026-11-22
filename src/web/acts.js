@@ -78,6 +78,15 @@ function garminExtras(x) {
   return o;
 }
 
+// Strecke nachladen? Alles mit möglichem GPS, nicht Indoor/Kraft; nach Fehlern mit wachsender Pause erneut
+const NO_GPS = new Set(['WeightTraining', 'Workout', 'Yoga', 'Pilates', 'Elliptical', 'StairStepper', 'Rowing', 'HighIntensityIntervalTraining', 'VirtualRide']);
+function wantsPoly(a) {
+  if (!a || a.id !== 'gc' + a.gid || a.poly || a.noGps || a.trainer || NO_GPS.has(a.type)) return false;
+  if (a.hasPoly === false && !(a.dist > 0)) return false;
+  const n = a.polyTry || 0;
+  return !n || Date.now() - (a.polyAt || 0) > Math.min(7, 2 ** n) * 3600000;
+}
+
 const naive = (s) => { const m = /^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)/.exec(s || ''); return m ? Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : NaN; };
 const monthOf = (a) => (a.date || '0000-00').slice(0, 7);
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -128,11 +137,10 @@ async function syncActivities(full, progress) {
       continue;
     }
     if (known) {
-      const { seen, poly, polyTried, ...rest } = known;
-      const next = { ...g, poly: poly || null, polyTried: polyTried || undefined, seen: seen || Date.now() };
-      if (next.polyTried === undefined) delete next.polyTried;
-      if (!same({ ...rest }, { ...g, ...(known.polyTried ? {} : {}) }) || !same(next, known)) { changes.set(g.id, next); touched.add(monthOf(g)); updated++; }
-      if (g.hasPoly && !next.poly && !next.polyTried) needPoly.push(g.id);
+      const next = { ...g, poly: known.poly || null, seen: known.seen || Date.now() };
+      for (const k of ['noGps', 'polyTry', 'polyAt']) if (known[k] != null) next[k] = known[k];
+      if (!same(next, known)) { changes.set(g.id, next); touched.add(monthOf(g)); updated++; }
+      if (wantsPoly(next)) needPoly.push(g.id);
       continue;
     }
     // passende Strava-Aufzeichnung suchen (gleiche lokale Startzeit ±3 min, ähnliche Distanz)
@@ -155,11 +163,12 @@ async function syncActivities(full, progress) {
     const item = { ...g, seen: Date.now() };
     changes.set(item.id, item); touched.add(monthOf(item)); added++;
     byGid.set(g.gid, item);
-    if (g.hasPoly) needPoly.push(item.id);
+    if (wantsPoly(item)) needPoly.push(item.id);
   }
   writeMonths(changes, touched);
-  // Karte (vereinfachte GPS-Linie) und Runden für neue Garmin-Aktivitäten aus der Originaldatei
-  await fillFromFit(needPoly, progress, first ? 80 : 40);
+  // Karte (vereinfachte GPS-Linie) und Runden aus der Originaldatei: neueste zuerst, der Rest läuft im Hintergrund weiter
+  needPoly.sort((p, q) => { const a = findAct(p), b = findAct(q); return a && b && a.start < b.start ? 1 : -1; });
+  await fillFromFit(needPoly, progress, 25);
   patchDoc('meta/garmin', { linkedAt: gmeta.linkedAt || Date.now(), last: todayIso(), n: (gmeta.n || 0) + added });
   return { fetched: raw.length, added, updated, linked };
 }
@@ -201,13 +210,14 @@ async function fillFromFit(ids, progress, max = 40) {
     try {
       const s = await fit(a.gid, 'summary');
       const next = { ...a, poly: s.poly || null };
-      if (!s.poly) next.polyTried = true;
+      delete next.polyTried; delete next.polyTry; delete next.polyAt;
+      if (!s.poly) next.noGps = true;
       changes.set(id, next); touched.add(monthOf(a));
       if (!getState().perf[id]) setDoc('perf/' + id, perfFromSummary(a, s));
       if (s.sets && s.sets.length && !getState().strength[id]) setDoc('strength/' + id, { sets: s.sets, src: 'garmin', at: Date.now() });
     } catch (e) {
       if (e && (e.code === 'unauthorized' || e.code === 'garmin_not_configured' || e.code === 'garmin_key_invalid')) break;
-      changes.set(id, { ...a, polyTried: true }); touched.add(monthOf(a));
+      changes.set(id, { ...a, polyTry: (a.polyTry || 0) + 1, polyAt: Date.now() }); touched.add(monthOf(a));
     }
     await sleep(150);
   }
@@ -263,10 +273,30 @@ export async function analyzeQueue(max = 20) {
   if (analyzing) return;
   analyzing = true;
   try {
-    const ids = [];
-    for (const ch of Object.values(getState().acts)) for (const a of ch.items || []) if (a.id === 'gc' + a.gid && a.hasPoly && !a.poly && !a.polyTried) ids.push(a.id);
-    if (ids.length) await fillFromFit(ids, () => {}, max);
+    // in Paketen, neueste zuerst, bis alles da ist (zwischendurch kurz Luft für die Oberfläche)
+    for (let round = 0; round < 40; round++) {
+      const list = [];
+      for (const ch of Object.values(getState().acts)) for (const a of ch.items || []) if (wantsPoly(a)) list.push(a);
+      if (!list.length) break;
+      list.sort((p, q) => (p.start < q.start ? 1 : -1));
+      setStatus({ analysis: { step: 'Strecken laden', n: 0, total: list.length } });
+      await fillFromFit(list.map((a) => a.id), (step, n) => setStatus({ analysis: { step, n, total: list.length } }), max);
+      await sleep(800);
+    }
   } finally { analyzing = false; setStatus({ analysis: null }); }
+}
+
+// Strecke einer einzelnen Aktivität sofort nachladen (für „Letzte Aktivität“ und die Liste)
+const polyBusy = new Set();
+export async function ensurePoly(id) {
+  const a = findAct(id);
+  if (!a || a.poly || !a.gid || a.noGps || a.trainer || NO_GPS.has(a.type) || polyBusy.has(id)) return (a && a.poly) || null;
+  const n = a.polyTry || 0;
+  if (n && Date.now() - (a.polyAt || 0) < Math.min(7, 2 ** n) * 3600000) return null;
+  polyBusy.add(id);
+  try { await fillFromFit([id], () => {}, 1); } finally { polyBusy.delete(id); }
+  const b = findAct(id);
+  return (b && b.poly) || null;
 }
 
 // ---------- Zeitreihen ----------
