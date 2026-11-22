@@ -45,7 +45,11 @@ export function WebConnections() {
               {adTest && !adTest.ok ? <div class="tiny" style="color:var(--bad)">{adTest.error}</div> : null}
               {ad.configured ? <button type="button" class="btn sec2" disabled={busy} onClick={checkAd}>{busy ? 'Prüfe …' : 'athletedata prüfen'}</button> : null}
             </Row>
-            {ad.configured && !w.configured ? null : <Row name="Withings" ok={w.connected} state={!w.configured ? 'nicht eingerichtet' : w.connected ? 'verbunden' : 'nicht verbunden'}>
+            {ad.configured && !w.configured ? (
+              <Row name="Withings" ok={adTest ? adTest.ok && (adTest.apps || []).includes('withings') : true} state={adTest && adTest.ok && !(adTest.apps || []).includes('withings') ? 'bei athletedata nicht verbunden' : 'über athletedata'}>
+                <div class="tiny faint">Die Messwerte deiner Waage kommen über athletedata, ein eigener Withings-Login ist nicht nötig. Sie erscheinen nach dem nächsten Abgleich (auf „Heute“ ⟳ tippen).</div>
+              </Row>
+            ) : <Row name="Withings" ok={w.connected} state={!w.configured ? 'nicht eingerichtet' : w.connected ? 'verbunden' : 'nicht verbunden'}>
               {!w.configured ? <div class="tiny faint">Für die Waage brauchst du eine eigene Withings-Entwickler-App. Client-ID und Secret kommen als WITHINGS_CLIENT_ID und WITHINGS_CLIENT_SECRET in Vercel.</div> : null}
               {w.configured && !w.connected ? <a class="btn" href="/api/withings?a=start">Mit Withings verbinden</a> : null}
               {w.connected ? <Fragment><div class="tiny faint">Verbunden seit {dt(w.since)}. Gelesen werden nur Messwerte (Gewicht, Körperzusammensetzung, Blutdruck).</div><button type="button" class="btn sec2" onClick={unlink}>Withings trennen</button></Fragment> : null}
