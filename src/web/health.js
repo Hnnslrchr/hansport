@@ -5,6 +5,7 @@ import { getState, setDoc, setStatus, derived } from '../store.js';
 import { healthDays, healthMeta, todayLocal, timeline, loose, jsonObjects, fromResult, arr } from '../health.js';
 import { garmin, api } from './api.js';
 import { readiness } from '../coach-logic.js';
+import * as AD from '../health.js';
 
 export { healthDays, healthMeta, todayLocal, timeline, loose, jsonObjects, fromResult, arr };
 
@@ -21,12 +22,25 @@ export function explainHealth(e) {
     case 'withings_not_connected': return 'Withings ist noch nicht verbunden (Mehr → Einstellungen).';
     case 'unavailable': return 'Keine Verbindung zum Server.';
     case 'no_mcp': return 'Diese Funktion gibt es in der Web-Version nicht.';
+    case 'athletedata_key_invalid': return 'athletedata lehnt den Schlüssel ab. Ist das Abo aktiv? Neuen Schlüssel unter athletedata.health/dashboard/mcp erzeugen und in Vercel eintragen.';
+    case 'athletedata_not_configured': return 'athletedata ist nicht eingerichtet (ATHLETEDATA_API_KEY in Vercel).';
+    case 'athletedata_unavailable': return 'athletedata ist gerade nicht erreichbar.';
     default: return 'Gesundheitsdaten konnten nicht geladen werden' + (e && e.message ? ': ' + String(e.message).slice(0, 140) : '.');
   }
 }
 
-// athletedata gibt es hier nicht (Coach-Gedächtnis bleibt in der App)
-export async function adCall() { throw new HealthError('no_mcp', 'In der Web-Version nicht verfügbar'); }
+// athletedata (optional, eigener Schlüssel): dann laufen Gesundheitsdaten und Coach-Gedächtnis wie in der Claude-Version
+let adOn = null;
+export async function athletedataOn() {
+  if (adOn != null) return adOn;
+  try { const s = await api('/api/status'); adOn = !!(s.athletedata && s.athletedata.configured); } catch (e) { return false; }
+  globalThis.__hsFlags = { ...(globalThis.__hsFlags || {}), athletedata: adOn };
+  return adOn;
+}
+export async function adCall(tool, input) {
+  if (!(await athletedataOn())) throw new HealthError('no_mcp', 'athletedata ist nicht eingerichtet');
+  return AD.adCall(tool, input);
+}
 
 // ---------- Helfer ----------
 const iso = (d) => d.toISOString().slice(0, 10);
@@ -49,7 +63,7 @@ function* windows(from, to, len) {
 let running = null;
 export function syncHealth(opts = {}) {
   if (running) return running;
-  running = doSync(opts).finally(() => { running = null; });
+  running = athletedataOn().then((on) => (on ? AD.syncHealth(opts) : doSync(opts))).finally(() => { running = null; });
   return running;
 }
 

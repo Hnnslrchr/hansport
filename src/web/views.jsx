@@ -5,6 +5,7 @@ import { Section } from '../ui/kit.jsx';
 import { toast, COLLS } from '../store.js';
 import { api } from './api.js';
 import { bulkWrite } from './db.js';
+import { athletedataOn } from './health.js';
 
 const dt = (ms) => new Date(ms).toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric' });
 
@@ -23,9 +24,11 @@ export function WebConnections() {
   const [busy, setBusy] = useState(false);
   const load = () => api('/api/status').then(setS).catch((e) => setS({ error: e.message }));
   useEffect(() => { load(); }, []);
+  const [adTest, setAdTest] = useState(null);
   const check = async () => { setBusy(true); try { const r = await api('/api/status?test=garmin'); setTest(r.garmin); } catch (e) { setTest({ ok: false, error: e.message }); } setBusy(false); };
+  const checkAd = async () => { setBusy(true); try { const r = await api('/api/status?test=athletedata'); setAdTest(r.athletedata); } catch (e) { setAdTest({ ok: false, error: e.message }); } setBusy(false); };
   const unlink = async () => { try { await api('/api/withings?a=disconnect', { method: 'POST' }); toast('Withings getrennt'); load(); } catch (e) { toast(e.message, 'error'); } };
-  const g = s && s.garmin, w = s && s.withings, c = s && s.coach;
+  const g = s && s.garmin, w = s && s.withings, c = s && s.coach, ad = (s && s.athletedata) || {};
   return (
     <Section title="Verbindungen">
       <div class="card p" style="padding-top:2px;padding-bottom:6px">
@@ -36,11 +39,17 @@ export function WebConnections() {
               {test && !test.ok ? <div class="tiny" style="color:var(--bad)">{test.error}</div> : null}
               {g.configured ? <button type="button" class="btn sec2" disabled={busy} onClick={check}>{busy ? 'Prüfe …' : 'Verbindung prüfen'}</button> : null}
             </Row>
-            <Row name="Withings" ok={w.connected} state={!w.configured ? 'nicht eingerichtet' : w.connected ? 'verbunden' : 'nicht verbunden'}>
+            <Row name="athletedata" ok={ad.configured && (!adTest || adTest.ok)} state={!ad.configured ? 'nicht eingerichtet' : adTest ? (adTest.ok ? 'verbunden' : 'Fehler') : 'eingerichtet'}>
+              <div class="tiny faint">{ad.configured ? 'Gesundheitsdaten von Garmin und Withings kommen über athletedata, wie in der Claude-Version. Aktivitäten kommen direkt von Garmin.' : 'Optional: Mit ATHLETEDATA_API_KEY in Vercel kommen Gesundheitsdaten (Garmin und Withings) über athletedata. Ohne Schlüssel holt hansport sie direkt von Garmin.'}</div>
+              {adTest && adTest.ok ? <div class="tiny faint">{'Abo ' + (adTest.plan === 'ACTIVE' ? 'aktiv' : adTest.plan || '?') + (adTest.until ? ' bis ' + adTest.until.split('-').reverse().join('.') : '') + (adTest.apps && adTest.apps.length ? ' · verbunden: ' + adTest.apps.join(', ') : '')}</div> : null}
+              {adTest && !adTest.ok ? <div class="tiny" style="color:var(--bad)">{adTest.error}</div> : null}
+              {ad.configured ? <button type="button" class="btn sec2" disabled={busy} onClick={checkAd}>{busy ? 'Prüfe …' : 'athletedata prüfen'}</button> : null}
+            </Row>
+            {ad.configured && !w.configured ? null : <Row name="Withings" ok={w.connected} state={!w.configured ? 'nicht eingerichtet' : w.connected ? 'verbunden' : 'nicht verbunden'}>
               {!w.configured ? <div class="tiny faint">Für die Waage brauchst du eine eigene Withings-Entwickler-App. Client-ID und Secret kommen als WITHINGS_CLIENT_ID und WITHINGS_CLIENT_SECRET in Vercel.</div> : null}
               {w.configured && !w.connected ? <a class="btn" href="/api/withings?a=start">Mit Withings verbinden</a> : null}
               {w.connected ? <Fragment><div class="tiny faint">Verbunden seit {dt(w.since)}. Gelesen werden nur Messwerte (Gewicht, Körperzusammensetzung, Blutdruck).</div><button type="button" class="btn sec2" onClick={unlink}>Withings trennen</button></Fragment> : null}
-            </Row>
+            </Row>}
             <Row name="Coach (Claude-API)" ok={c.configured} state={c.configured ? 'eingerichtet' : 'nicht eingerichtet'}>
               <div class="tiny faint">{c.configured ? 'Modell ' + c.model + '. Fragen an den Coach senden die nötigen Werte an die Claude-API (Anthropic); Anthropic nutzt API-Daten nicht zum Training.' : 'Trag deinen Claude-API-Schlüssel in Vercel als ANTHROPIC_API_KEY ein.'}</div>
             </Row>
@@ -86,6 +95,7 @@ export function WebImport() {
 
 // Rückmeldung nach der Withings-Freigabe
 export function webBoot() {
+  athletedataOn().catch(() => {});
   try {
     const q = new URLSearchParams(location.search);
     const w = q.get('withings');

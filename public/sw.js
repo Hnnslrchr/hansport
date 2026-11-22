@@ -1,5 +1,5 @@
-// hansport 249fc1e897 / Daten 8d76d46ca8203577a7df
-const APP = 'hs-app-249fc1e897', DATA = 'hs-data-8d76d46ca8203577a7df';
+// hansport 0eb5276aa1 / Daten 8d76d46ca8203577a7df
+const APP = 'hs-app-0eb5276aa1', DATA = 'hs-data-8d76d46ca8203577a7df';
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => { e.waitUntil((async () => { for (const k of await caches.keys()) if (k !== APP && k !== DATA) await caches.delete(k); await self.clients.claim(); })()); });
 self.addEventListener('fetch', (e) => {

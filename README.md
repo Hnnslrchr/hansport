@@ -22,8 +22,9 @@ und sind nur nach Anmeldung erreichbar.
 | --- | --- | --- |
 | `APP_PASSWORD` | ja | Passwort für die Anmeldung (mindestens 16 Zeichen empfohlen) |
 | `GARMIN_API_KEY` | ja | Garmin Personal API Key (Garmin Connect → Einstellungen) |
+| `ATHLETEDATA_API_KEY` | optional | Gesundheitsdaten (Garmin, Withings) über athletedata statt direkt; Schlüssel unter athletedata.health/dashboard/mcp |
 | `ANTHROPIC_API_KEY` | für den Coach | Claude-API-Schlüssel |
-| `WITHINGS_CLIENT_ID`, `WITHINGS_CLIENT_SECRET` | für die Waage | eigene Withings-Entwickler-App, Callback `https://<domain>/api/withings-callback` |
+| `WITHINGS_CLIENT_ID`, `WITHINGS_CLIENT_SECRET` | für die Waage ohne athletedata | eigene Withings-Entwickler-App, Callback `https://<domain>/api/withings-callback` |
 | `SESSION_SECRET` | optional | zusätzlicher Schlüssel für Sitzungen; ändern meldet alle Geräte ab |
 | `COACH_MODEL` | optional | Standard `claude-sonnet-5-5` |
 | `BLOB_READ_WRITE_TOKEN` | automatisch | kommt von der verbundenen privaten Blob-Ablage |
@@ -36,7 +37,7 @@ npm run build:web        # baut public/index.html, login.html, sw.js, manifest
 APP_PASSWORD=test HANSPORT_LOCAL_DATA=/tmp/hsdata npm run dev   # http://localhost:8787
 ```
 
-Tests (brauchen lokale Testdaten, die nicht im Repository liegen): `npm run test:web`.
+Tests (brauchen lokale Testdaten, die nicht im Repository liegen): `npm run test:web` und `node test/web/e2e.mjs ad` (über athletedata).
 
 ## Datenschutz
 

@@ -66,7 +66,7 @@ function makeTools({ H, acts, cards }) {
     { name: 'merken', description: 'Speichert etwas im Coach-Gedächtnis. NUR aufrufen, wenn der Athlet es ausdrücklich festlegt oder bestätigt. art: ziel | vorliebe | entscheidung. zitat: seine eigenen Worte.',
       inputSchema: { type: 'object', properties: { art: { type: 'string', enum: ['ziel', 'vorliebe', 'entscheidung'] }, text: { type: 'string' }, zitat: { type: 'string' } }, required: ['art', 'text'] },
       execute: async ({ art, text, zitat }) => { const ok = await remember(art, text, zitat); cards.push({ memo: art + ': ' + text }); return ok ? 'Gespeichert (App und athletedata)' : 'In der App gespeichert'; } },
-  ].filter((t) => !WEB || t.name !== 'athletenkontext');
+  ].filter((t) => !WEB || t.name !== 'athletenkontext' || (globalThis.__hsFlags && globalThis.__hsFlags.athletedata));
 }
 
 const SYSTEM = `Du bist der persönliche Coach in der App „hansport“: Trainer, Gesundheits- und Ernährungsberater in einem.

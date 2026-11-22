@@ -6,6 +6,7 @@ import { zipSync } from 'fflate';
 
 const PORT = +process.argv[2] || 8790;
 const FX = JSON.parse(readFileSync(new URL('../fixtures.json', import.meta.url)));
+const HF = JSON.parse(readFileSync(new URL('../fx_health.json', import.meta.url)));
 const TYPE = { Ride: 'road_biking', VirtualRide: 'virtual_ride', MountainBikeRide: 'mountain_biking', GravelRide: 'gravel_cycling', Hike: 'hiking', Walk: 'walking', WeightTraining: 'strength_training', Workout: 'strength_training', Snowboard: 'resort_snowboarding', BackcountrySki: 'backcountry_snowboarding', Run: 'running', EBikeRide: 'e_bike_fitness' };
 const acts = FX.activities.map((a, i) => ({
   activityId: 9000000000 + i, activityName: a.name, startTimeLocal: a.start_local.replace('T', ' '),
@@ -51,6 +52,24 @@ http.createServer(async (req, res) => {
   calls[p.replace(/\d{4}-\d\d-\d\d/g, 'D').replace(/\d{6,}/g, 'N')] = (calls[p.replace(/\d{4}-\d\d-\d\d/g, 'D').replace(/\d{6,}/g, 'N')] || 0) + 1;
   const json = (o, s = 200) => { res.writeHead(s, { 'content-type': 'application/json' }); res.end(JSON.stringify(o)); };
   if (p === '/__calls') return json(calls);
+  if (p === '/mcp') {
+    // athletedata als MCP-Server (Streamable HTTP, Sitzung über Kopfzeile, Antworten teils als SSE)
+    let body = ''; for await (const c of req) body += c;
+    if (req.headers.authorization !== 'Bearer sk_soma_test') return json({ error: 'Missing API key' }, 401);
+    const m = JSON.parse(body);
+    if (m.method === 'initialize') { res.writeHead(200, { 'content-type': 'application/json', 'mcp-session-id': 'sess-1' }); return res.end(JSON.stringify({ jsonrpc: '2.0', id: m.id, result: { protocolVersion: '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'athletedata', version: 'x' } } })); }
+    if (req.headers['mcp-session-id'] !== 'sess-1') return json({ error: 'bad session' }, 404);
+    if (!m.id) { res.writeHead(202); return res.end(); }
+    const a = (m.params && m.params.arguments) || {};
+    const inWin = (d) => (!a.start_date || d >= a.start_date) && (!a.end_date || d <= a.end_date);
+    const name = m.params && m.params.name;
+    calls['ad:' + name] = (calls['ad:' + name] || 0) + 1;
+    const val = { get_daily_metrics: JSON.stringify(HF.daily), garmin_get_sleep: { records: HF.sleep.records.filter((x) => inWin(x.calendarDate)) }, garmin_get_daily_summaries: HF.summaries.filter((x) => inWin(x.calendarDate)), garmin_get_user_metrics: HF.user.filter((x) => inWin(x.calendarDate)), withings_get_measurements: HF.withings, get_pmc_status: HF.pmc, get_athlete_context: { memory: { preferences: ['Ruhetag Montag'] } }, athletedata_subscription_status: 'Your athletedata plan is ACTIVE (billing status: trialing). The current period runs to 2026-11-28; x. Apps connected to this athletedata account right now: garmin, withings. That was read live' }[name];
+    if (val === undefined) return json({ jsonrpc: '2.0', id: m.id, result: { isError: true, content: [{ type: 'text', text: 'unknown tool' }] } });
+    const result = { content: [{ type: 'text', text: typeof val === 'string' ? val : JSON.stringify(val) }] };
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    return res.end('event: message\ndata: ' + JSON.stringify({ jsonrpc: '2.0', id: m.id, result }) + '\n\n');
+  }
   if (p === '/measure') {
     let body = ''; for await (const c of req) body += c;
     if (req.headers.authorization !== 'Bearer wtok') return json({ status: 401 });
@@ -67,7 +86,7 @@ http.createServer(async (req, res) => {
       const txt = 'Deine HRV liegt im Normalbereich. ' + 'Werkzeug sagte: ' + String(last.content[0].content).slice(0, 40) + '\nGrundlage: Test';
       return sse([{ type: 'message_start', message: { id: 'm2' } }, { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }, { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: txt.slice(0, 20) } }, { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: txt.slice(20) } }, { type: 'content_block_stop', index: 0 }, { type: 'message_delta', delta: { stop_reason: 'end_turn' } }, { type: 'message_stop' }]);
     }
-    const toolsOk = (b.tools || []).some((t) => t.name === 'zeitreihe') && !(b.tools || []).some((t) => t.name === 'athletenkontext');
+    const toolsOk = (b.tools || []).some((t) => t.name === 'zeitreihe') && (b.tools || []).some((t) => t.name === 'athletenkontext') === !!process.env.ATHLETEDATA_API_KEY;
     return sse([{ type: 'message_start', message: { id: 'm1' } }, { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }, { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Ich schaue nach. ' } }, { type: 'content_block_stop', index: 0 }, { type: 'content_block_start', index: 1, content_block: { type: 'tool_use', id: 'tu1', name: toolsOk ? 'zeitreihe' : 'fehlt', input: {} } }, { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"kennzahl":"hrv",' } }, { type: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '"von":"2026-11-15","bis":"2026-11-22"}' } }, { type: 'content_block_stop', index: 1 }, { type: 'message_delta', delta: { stop_reason: 'tool_use' } }, { type: 'message_stop' }]);
   }
   if (p === '/personalapitoken-service/personal-api/personal-api-key/token') {

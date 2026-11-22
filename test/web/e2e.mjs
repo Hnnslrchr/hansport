@@ -6,7 +6,8 @@ import { chromium } from 'playwright';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 rmSync('/tmp/hsdata', { recursive: true, force: true }); mkdirSync('/tmp/hsdata/sys', { recursive: true });
 writeFileSync('/tmp/hsdata/sys/withings.json', JSON.stringify({ access: 'wtok', refresh: 'r', exp: Date.now() + 3600_000, userid: '1', at: Date.now() }));
-const env = { ...process.env, APP_PASSWORD: 'pw-test-123456', HANSPORT_LOCAL_DATA: '/tmp/hsdata', GARMIN_API_KEY: 'test-key', GARMIN_BASE_URL: 'http://localhost:8790', WITHINGS_CLIENT_ID: 'wid', WITHINGS_CLIENT_SECRET: 'wsec', WITHINGS_BASE_URL: 'http://localhost:8790', ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: 'http://localhost:8790' };
+const AD = process.argv[2] === 'ad';
+const env = { ...process.env, ...(AD ? { ATHLETEDATA_API_KEY: 'sk_soma_test', ATHLETEDATA_MCP_URL: 'http://localhost:8790/mcp' } : {}), APP_PASSWORD: 'pw-test-123456', HANSPORT_LOCAL_DATA: '/tmp/hsdata', GARMIN_API_KEY: 'test-key', GARMIN_BASE_URL: 'http://localhost:8790', WITHINGS_CLIENT_ID: 'wid', WITHINGS_CLIENT_SECRET: 'wsec', WITHINGS_BASE_URL: 'http://localhost:8790', ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: 'http://localhost:8790' };
 const mock = spawn('node', ['test/web/mock-garmin.mjs', '8790'], { env, stdio: 'inherit' });
 const srv = spawn('node', ['tools/dev-server.mjs', '8787'], { env, stdio: ['ignore', 'inherit', 'inherit'] });
 await sleep(1500);
@@ -59,6 +60,16 @@ try {
   // 4) Gesundheit
   await page.evaluate(() => window.__spur.syncHealth({}));
   const hs = await page.evaluate(() => { const H = window.__spur.getState().health; const days = {}; for (const d of Object.values(H)) Object.assign(days, d.days); const t = Object.keys(days).sort().pop(); const x = days[t]; const meta = window.__spur.getState().meta.health; return { t, x, meta }; });
+  if (AD) {
+    const ad = await page.evaluate(() => { const H = window.__spur.getState().health; let n = 0, rec = 0, tl = 0; for (const d of Object.values(H)) for (const x of Object.values(d.days)) { n++; if (x.rec != null) rec++; if (x.sl && x.sl.tl) tl++; } return { n, rec, tl, meta: window.__spur.getState().meta.health }; });
+    check(ad.meta.v === 5 && ad.rec > 0, 'athletedata: Gesundheit wie bisher (v' + ad.meta.v + ', ' + ad.rec + ' Tage mit Erholung, ' + ad.tl + ' mit Schlafphasen, Hinweise: ' + JSON.stringify(ad.meta.notes || null) + ')');
+    await page.evaluate(() => { window.__spur.setTab('more'); window.__spur.push('settings'); });
+    await page.waitForSelector('text=athletedata prüfen');
+    await page.click('text=athletedata prüfen');
+    await page.waitForSelector('text=/Abo aktiv bis 28.11.2026/', { timeout: 8000 });
+    await page.screenshot({ path: 'test/shots/web-settings-ad.png' });
+    check(true, 'athletedata-Verbindung geprüft (Abo, verbundene Apps)');
+  } else {
   check(hs.x && hs.x.hrv != null && hs.x.rhr != null && hs.x.sl && hs.x.sl.total, 'Tageswerte heute (' + hs.t + '): HRV ' + (hs.x && hs.x.hrv) + ', Ruhepuls ' + (hs.x && hs.x.rhr) + ', Schlaf ' + (hs.x && hs.x.sl && hs.x.sl.total));
   check(hs.x && hs.x.src && hs.x.src.pmc === 'hansport' && hs.x.ctl != null && hs.meta.pmc && Math.abs(hs.meta.pmc.k - 0.71) < 0.05, 'Form berechnet: CTL ' + (hs.x && hs.x.ctl) + ' TSB ' + (hs.x && hs.x.tsb) + ' k=' + (hs.meta.pmc && hs.meta.pmc.k));
   check(hs.x && hs.x.rdy != null, 'Erholung berechnet: ' + (hs.x && hs.x.rdy) + ' (' + (hs.x && hs.x.rdyK) + ')');
@@ -66,6 +77,7 @@ try {
   const wi = await page.evaluate(() => { const H = window.__spur.getState().health; return (H['2026-11'] && H['2026-11'].days['2026-11-21']) || {}; });
   check(wi.wi && wi.wi.weight === 78.1 && wi.wi.fatPct === 17.1 && wi.weight === 78.1 && wi.src.weight === 'withings', 'Withings: ' + JSON.stringify(wi.wi));
   check(hs.meta.v === 6 && hs.meta.src === 'garmin', 'meta/health v6 (' + JSON.stringify(hs.meta.notes || null) + ')');
+  }
 
   // 5) Aktivität mit Zeitreihen aus FIT
   const id = st.garmin.find((a) => a.sport === 'road').id;
