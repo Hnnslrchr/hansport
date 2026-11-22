@@ -1,0 +1,11 @@
+node_modules/
+dist/
+out/
+.vercel/
+.env*
+# Testdaten und ältere Testskripte mit persönlichen Werten bleiben lokal
+test/*
+!test/web/
+*.log
+.DS_Store
+vendor/package/
