@@ -31,7 +31,6 @@ for (const scheme of ['dark', 'light']) {
   const shots = [
     ['01-heute', () => window.__spur.setTab('today'), 3000, 3000],
     ['02-aktivitaeten', () => window.__spur.setTab('activities'), 2000, 3600],
-    ['14-schlaf', () => { window.__spur.setTab('health'); window.__spur.push('metric', { k: 'sleep' }); }, 2500, 1400],
     ['03-detail', (id) => { window.__spur.setTab('activities'); window.__spur.push('activity', { id }); }, 4000, 2600, ids.road],
     ['04-gesundheit', () => window.__spur.setTab('health'), 2500, 3000],
     ['05-kennzahl-hrv', () => { window.__spur.setTab('health'); window.__spur.push('metric', { k: 'hrv' }); }, 2500, 1800],
@@ -41,6 +40,7 @@ for (const scheme of ['dark', 'light']) {
     ['09-ausruestung', () => { window.__spur.setTab('more'); window.__spur.push('gear'); }, 1500, 1200],
     ['10-rad', () => { window.__spur.setTab('more'); window.__spur.push('gear-item', { id: '14788475' }); }, 2000, 2000],
     ['11-einstellungen', () => { window.__spur.setTab('more'); window.__spur.push('settings'); }, 2000, 2200],
+    ['14-schlaf', () => { window.__spur.setTab('health'); window.__spur.push('metric', { k: 'sleep' }); }, 2500, 1400],
     ['13-datenquellen', () => { window.__spur.setTab('more'); window.__spur.push('sources'); }, 2500, 2000],
     ['12-mehr', () => window.__spur.setTab('more'), 1200, 1300],
   ];

@@ -174,10 +174,10 @@ export function Profile({ d, alt, sections, cursor, onCursor, height = 150, labe
 }
 
 // Linie über die Distanz (Puls, Tempo, Leistung)
-export function Series({ d, y, cursor, height = 90, color = 'var(--ink)', label, unit, fmt = (v) => int(v), y2, color2, label2 }) {
+export function Series({ d, y, cursor, height = 112, color = 'var(--ink)', label, unit, fmt = (v) => int(v), y2, color2, label2 }) {
   const [ref, W] = useWidth();
   if (!d || !y || !y.some((v) => v != null)) return null;
-  const L = 38, B = 4, T = 22;
+  const L = 38, B = 8, T = 8;
   const dmax = d[d.length - 1] || 1;
   const all = y.concat(y2 || []).filter((v) => v != null);
   let v0 = Math.min(...all), v1 = Math.max(...all);
@@ -190,11 +190,10 @@ export function Series({ d, y, cursor, height = 90, color = 'var(--ink)', label,
   let first = -1, lastI = -1; for (let i = 0; i < d.length; i++) if (y[i] != null) { if (first < 0) first = i; lastI = i; }
   const area = !y2 && first >= 0 ? line(y) + 'L' + X(d[lastI]).toFixed(1) + ',' + (height - B) + 'L' + X(d[first]).toFixed(1) + ',' + (height - B) + 'Z' : null;
   return (
-    <div ref={ref}>
-      <svg class="chart" width={W} height={height} viewBox={`0 0 ${W} ${height}`} role="img" aria-label={label}>
+    <div ref={ref} class="ser">
+      <div class="ser-h"><span><b>{label}</b>{unit ? ' · ' + unit : ''}</span>{label2 ? <b style={'color:' + color2}>{label2}</b> : avg != null ? <span>Ø {fmt(avg)}{unit ? '\u202F' + unit : ''}</span> : null}</div>
+      <svg class="chart" width={W} height={height} viewBox={`0 0 ${W} ${height}`} role="img" aria-label={label + (avg != null ? ', Durchschnitt ' + fmt(avg) + ' ' + (unit || '') : '')}>
         <defs><linearGradient id={'sg' + label} x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color={color} style="stop-opacity:var(--fill-top)" /><stop offset="1" stop-color={color} stop-opacity="0" /></linearGradient></defs>
-        <text x="0" y="10" style="font-weight:600;fill:var(--ink)">{label}<tspan style="fill:var(--ink-2);font-weight:400">{unit ? ' · ' + unit : ''}{avg != null ? ' · Ø ' + fmt(avg) : ''}</tspan></text>
-        {label2 ? <text x={W} y="10" text-anchor="end" style={'font-weight:600;fill:' + color2}>{label2}</text> : null}
         <line class="grid" x1={L} x2={W} y1={Y(v1)} y2={Y(v1)} /><line class="grid" x1={L} x2={W} y1={Y(v0)} y2={Y(v0)} />
         <text x={L - 5} y={Y(v1) + 3.5} text-anchor="end">{fmt(v1)}</text>
         <text x={L - 5} y={Y(v0) + 3.5} text-anchor="end">{fmt(v0)}</text>

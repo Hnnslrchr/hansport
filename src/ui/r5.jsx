@@ -35,7 +35,9 @@ export function useWidth(ref) {
 // Balken ab 0 mit Tagesbeschriftung. items: [{ date, v }], v = null → keine Daten (Lücke)
 export function DayBars({ items, max, avg, avgLabel, goal, goalLabel = 'Ziel', label, fmt = int, unit = '', hlIndex, labels = 'days', topFmt = fmtScale, ends, xLabels, ariaItem }) {
   const vals = items.map((x) => x.v).filter((v) => v != null);
-  const top = niceMax(Math.max(max || 0, ...vals, avg || 0, goal || 0));
+  let top = niceMax(Math.max(max || 0, ...vals, avg || 0, goal || 0));
+  // Ziel- oder Ø-Linie nicht auf die oberste Skalenlinie legen (sonst kollidiert sie mit dem Skalenwert)
+  if (!max && Math.max(goal || 0, avg || 0) > top * 0.85) top = niceMax(Math.max(goal || 0, avg || 0) * 1.18);
   const hl = hlIndex != null ? hlIndex : items.length - 1;
   const pct = (v) => Math.max(0, Math.min(100, (v / top) * 100));
   const aria = label + ': ' + items.map((x, i) => (ariaItem ? ariaItem(x, i) : xLabels ? xLabels[i] : wdOf(x.date)) + ' ' + (x.v == null ? 'keine Daten' : fmt(x.v) + (unit ? ' ' + unit : ''))).join(', ');

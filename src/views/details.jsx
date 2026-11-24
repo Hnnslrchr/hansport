@@ -161,23 +161,47 @@ function sayRhr(pts, band, wk, W, all) {
 }
 
 // ============================== Schlaf ==============================
-// Ohne zeitlichen Verlauf (Garmin Personal API liefert nur Summen je Phase): Anteile der Nacht als ein Balken
-function PhaseBar({ sl }) {
-  const parts = [['d', sl.deep], ['l', sl.light], ['r', sl.rem], ['a', sl.awake]].filter((p) => p[1] > 0);
-  const tot = parts.reduce((t, p) => t + p[1], 0);
+// Ohne zeitlichen Verlauf (Garmin Personal API liefert nur Summen je Phase): Ring mit den Anteilen
+// und je Phase der Vergleich mit dem Schnitt der 28 Nächte davor
+function PhaseDonut({ sl, prev }) {
+  const parts = [['d', sl.deep], ['l', sl.light], ['r', sl.rem], ['a', sl.awake]].filter((p) => p[1] != null);
+  const tot = parts.reduce((t, p) => t + (p[1] || 0), 0);
   if (!tot) return null;
-  const name = (k) => (STAGES.find((s) => s.k === k) || {}).name || k;
+  const name = (k) => (STAGES.find((x) => x.k === k) || {}).name || k;
+  const avg = (k) => { const v = prev.map((q) => q.sl[{ d: 'deep', l: 'light', r: 'rem', a: 'awake' }[k]]).filter((x) => x != null); return v.length >= 5 ? v.reduce((x, y) => x + y, 0) / v.length : null; };
+  const S = 148, R = 60, W = 16, C = 2 * Math.PI * R, gap = 3;
+  let off = 0;
+  const arcs = parts.filter((p) => p[1] > 0).map(([k, v]) => { const len = (v / tot) * C; const o = { k, len: Math.max(0.5, len - gap), off }; off += len; return o; });
   return (
-    <div class="phbar">
-      <div class="phbar-b" role="img" aria-label={'Anteile der Nacht: ' + parts.map((p) => name(p[0]) + ' ' + hmm(p[1]) + ' Stunden').join(', ')}>
-        {parts.map((p) => <span style={{ width: (p[1] / tot) * 100 + '%', background: SL[p[0]] }} />)}
+    <div class="phd">
+      <div class="phd-ring">
+        <svg width={S} height={S} viewBox={`0 0 ${S} ${S}`} role="img" aria-label={'Anteile der Nacht: ' + parts.map(([k, v]) => name(k) + ' ' + hmm(v) + ' Stunden, ' + Math.round((v / tot) * 100) + ' Prozent').join('; ')}>
+          <circle cx={S / 2} cy={S / 2} r={R} fill="none" stroke="var(--track)" stroke-width={W} />
+          <g transform={`rotate(-90 ${S / 2} ${S / 2})`}>
+            {arcs.map((x) => <circle cx={S / 2} cy={S / 2} r={R} fill="none" stroke={SL[x.k]} stroke-width={W} stroke-dasharray={`${x.len} ${C}`} stroke-dashoffset={-x.off} />)}
+          </g>
+          <text x={S / 2} y={S / 2 + 2} text-anchor="middle" class="phd-v">{hmm(sl.total)}</text>
+          <text x={S / 2} y={S / 2 + 20} text-anchor="middle" class="phd-u">Std. Schlaf</text>
+        </svg>
+        {sl.start && sl.end ? <div class="phd-t">{sl.start} – {sl.end}</div> : null}
       </div>
-      <div class="phbar-ax"><span>{sl.start || ''}</span><span>{sl.end || ''}</span></div>
-      <p class="phbar-n">Garmin gibt über die Personal API für diese Nacht nur die Dauer je Phase heraus, nicht ihren zeitlichen Verlauf. Der Balken zeigt deshalb die Anteile, nicht die Reihenfolge.</p>
+      <div class="phd-list">
+        {parts.map(([k, v]) => {
+          const a = avg(k), d = a != null ? v - a : null;
+          return (
+            <div class="phd-row">
+              <i style={{ background: SL[k] }} />
+              <span class="n">{name(k)}</span>
+              <span class="v">{hmm(v)}<small>h</small></span>
+              <span class="s">{Math.round((v / tot) * 100)}{' '}%{d != null ? ' · ' + (Math.abs(d) < 1 ? 'wie Ø' : (d > 0 ? '+' : '−') + hmm(Math.abs(d)) + ' zu Ø') : ''}</span>
+            </div>
+          );
+        })}
+      </div>
+      <p class="phd-n">Garmin gibt über die Personal API nur die Dauer je Phase heraus, nicht ihre Reihenfolge. Ø = 28 Nächte davor.</p>
     </div>
   );
 }
-
 const SL = { d: 'var(--sl-d)', l: 'var(--sl-l)', r: 'var(--sl-r)', a: 'var(--sl-a)' };
 export function SleepDetail({ H, end }) {
   const [p, setP] = useState('d');
@@ -210,7 +234,7 @@ export function SleepDetail({ H, end }) {
           sub={selStage ? 'Uhrzeit ' + clockOfMinute(tl.s0 + sel.m) : `${sl.start || '–'}–${sl.end || '–'} · Score ${sl.score != null ? sl.score : '–'}${need ? ' · Bedarf ' + hmm(need) + ' h' : ''}`} />
         <div class="t2" style="padding:10px 10px 6px">
           {tl ? <Hypnogram tl={tl} sel={sel} onSel={setSel} label={'Schlafphasen der Nacht auf ' + dWeek(night)} />
-            : WEB && sl.total ? <PhaseBar sl={sl} />
+            : WEB && sl.total ? <PhaseDonut sl={sl} prev={nights.filter((q) => q.date < night && q.date >= addD(night, -28))} />
             : <div class="empty2">Den Phasenverlauf dieser Nacht holt der nächste Abgleich (Ziehen zum Aktualisieren).</div>}
           <div class="nav2">
             <button type="button" aria-label="Nacht davor" disabled={i <= 0} onClick={() => { setNight(nights[i - 1].date); setSel(null); }}><Ico n="nav-arrow-left" /></button>
@@ -218,13 +242,13 @@ export function SleepDetail({ H, end }) {
             <button type="button" aria-label="Nacht danach" disabled={i < 0 || i >= nights.length - 1} onClick={() => { setNight(nights[i + 1].date); setSel(null); }}><Ico n="nav-arrow-right" /></button>
           </div>
         </div>
-        <div class="stg2">
+        {!tl && WEB && sl.total ? null : <div class="stg2">
           {parts.map(([k, v]) => (
             <Fragment>
               <i style={`background:${SL[k]}`} /><span>{STAGES.find((s) => s.k === k).name}</span><span class="v">{v != null ? hmm(v) + ' h' : '–'}</span><span class="p">{v != null && inBed ? Math.round((v / inBed) * 100) + ' %' : ''}</span>
             </Fragment>
           ))}
-        </div>
+        </div>}
         <p class="say2">{saySleepNight(sl, need, dStart, avgStart, last30.length)}</p>
       </div>
     );

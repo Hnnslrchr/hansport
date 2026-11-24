@@ -73,6 +73,43 @@ function Glance({ S }) {
   );
 }
 
+// ---------- Schlafenszeiten: Uhrzeit-Leiste der letzten 7 Nächte (Einschlafen bis Aufwachen) ----------
+const clk = (m) => { const v = ((Math.round(m) % 1440) + 1440) % 1440; return String(Math.floor(v / 60)).padStart(2, '0') + ':' + String(v % 60).padStart(2, '0'); };
+const WD1 = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+function SleepWindows({ H, today, avgStart }) {
+  const rows = [];
+  for (let j = 6; j >= 0; j--) {
+    const d = addD(today, -j), r = H.map[d], sl = r && r.sl;
+    const a = sl && sl.start ? nightMin(sl.start) : null, b = sl && sl.end ? nightMin(sl.end) : null;
+    rows.push({ d, a, b: a != null && b != null && b < a ? b + 1440 : b });
+  }
+  const ok = rows.filter((x) => x.a != null && x.b != null);
+  if (!ok.length) return null;
+  const lo = Math.floor(Math.min(...ok.map((x) => x.a)) / 60) * 60, hi = Math.ceil(Math.max(...ok.map((x) => x.b)) / 60) * 60;
+  const span = Math.max(60, hi - lo);
+  const pos = (m) => ((m - lo) / span) * 100;
+  const step = span > 600 ? 240 : span > 360 ? 180 : 120;
+  const ticks = []; for (let t = Math.ceil(lo / step) * step; t <= hi; t += step) ticks.push(t);
+  const avgEnd = ok.reduce((s, x) => s + x.b, 0) / ok.length;
+  const last = rows.length - 1;
+  return (
+    <div class="swin" role="img" aria-label={'Schlafenszeiten der letzten 7 Nächte: ' + rows.map((x) => WD1[new Date(x.d + 'T12:00:00').getDay()] + ' ' + (x.a != null ? clk(x.a) + ' bis ' + clk(x.b) : 'keine Daten')).join(', ')}>
+      <div class="swin-plot">
+        <span class="swin-avg" style={{ left: pos(avgStart) + '%' }} />
+        <span class="swin-avg" style={{ left: pos(avgEnd) + '%' }} />
+        {rows.map((x, i) => (
+          <div class="swin-row">
+            <span class={'swin-d' + (i === last ? ' on' : '')}>{WD1[new Date(x.d + 'T12:00:00').getDay()]}</span>
+            <span class="swin-tr">{x.a != null && x.b != null ? <i class={i === last ? 'on' : ''} style={{ left: pos(x.a) + '%', width: Math.max(2, pos(x.b) - pos(x.a)) + '%' }} /> : null}</span>
+          </div>
+        ))}
+      </div>
+      <div class="swin-ax">{ticks.map((t) => <span style={{ left: pos(t) + '%' }}>{clk(t).slice(0, 2)}</span>)}</div>
+      <div class="swin-leg"><i />Ø {clk(avgStart)} – {clk(avgEnd)}</div>
+    </div>
+  );
+}
+
 // ---------- Mini-Graphen (ohne Achsen; Werte stehen in der Kachel) ----------
 function MiniDots({ pts, band, w = 300, hgt = 64 }) {
   if (pts.length < 2) return <div style={`height:${hgt / 2}px`} />;
@@ -276,10 +313,11 @@ export function Health() {
               </Tile>
               <Tile s={S.slScore}><DayBars items={days7((r) => (r.sl && r.sl.score != null ? r.sl.score : r.slScore))} max={100} label="Schlafscore, 7 Nächte" /></Tile>
               {times.length >= 5 ? (
-                <button type="button" class="t2 htile glow g-sch" style="--gx:100%;--gy:100%" onClick={() => push('metric', { k: 'sleep' })}>
-                  <div class="t2-h"><Ico n="clock" />Einschlafzeit</div>
-                  <div class="hv"><span class="mid2">{(() => { const v = ((Math.round(mean(times)) % 1440) + 1440) % 1440; return String(Math.floor(v / 60)).padStart(2, '0') + ':' + String(v % 60).padStart(2, '0'); })()}</span></div>
-                  <div class="sub2">Ø 14 Nächte · schwankt ± {hmm(sd(times))} h</div>
+                <button type="button" class="t2 htile glow g-sch" style="--gx:100%;--gy:100%" onClick={() => push('metric', { k: 'sleep' })} aria-label="Schlafenszeiten, Details">
+                  <div class="t2-h"><Ico n="clock" /><span class="lb">Einschlafzeit</span></div>
+                  <div class="hv"><span class="mid2">{clk(mean(times))}</span></div>
+                  <div class="t2-g"><SleepWindows H={H} today={today} avgStart={mean(times)} /></div>
+                  <div class="sub2">Ø 14 Nächte · schwankt ± {hmm(sd(times))}{NB}h</div>
                 </button>
               ) : null}
             </div>

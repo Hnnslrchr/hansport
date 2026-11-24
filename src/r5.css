@@ -181,12 +181,22 @@
   .tile .hp-head .hp-src { order: 3; flex-basis: 100%; padding-left: 24px; }
 }
 
-/* Schlaf ohne Verlauf: Anteile als Balken */
-.phbar { padding: 14px 6px 4px; }
-.phbar-b { display: flex; height: 28px; border-radius: 8px; overflow: hidden; gap: 2px; }
-.phbar-b span { display: block; min-width: 2px; }
-.phbar-ax { display: flex; justify-content: space-between; margin-top: 6px; font-size: var(--fs-cap); color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.phbar-n { margin: 10px 0 2px; font-size: var(--fs-foot); line-height: var(--lh-foot); color: var(--ink-2); }
+/* Schlaf ohne Verlauf: Ring mit Anteilen und Vergleich */
+.phd { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 18px; align-items: center; padding: 14px 6px 6px; }
+.phd-ring { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.phd-ring svg { display: block; }
+.phd-v { font-family: var(--display); font-weight: 650; font-size: 30px; letter-spacing: -.04em; fill: var(--ink); }
+.phd-u { font-size: 11px; fill: var(--ink-2); font-family: var(--body); }
+.phd-t { font-size: var(--fs-cap); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.phd-list { display: flex; flex-direction: column; gap: 10px; }
+.phd-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 1px 8px; align-items: center; }
+.phd-row i { width: 10px; height: 10px; border-radius: 3px; }
+.phd-row .n { font-size: var(--fs-foot); color: var(--ink); }
+.phd-row .v { font-family: var(--display); font-weight: 600; font-size: var(--fs-sub); white-space: nowrap; }
+.phd-row .v small { font-family: var(--body); font-weight: 400; font-size: var(--fs-cap); color: var(--ink-2); margin-left: .15em; }
+.phd-row .s { grid-column: 2 / 4; font-size: var(--fs-cap); color: var(--ink-2); }
+.phd-n { grid-column: 1 / -1; margin: 6px 0 0; font-size: var(--fs-cap); line-height: 1.4; color: var(--ink-3); }
+@container (max-width: 330px) { .phd { grid-template-columns: 1fr; justify-items: center; } .phd-list { width: 100%; } }
 
 /* Aktivitäten → Überblick */
 .dash .chips { margin-bottom: 8px; }
@@ -214,3 +224,40 @@
 .int-b span { display: block; min-width: 2px; }
 .int-ax { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin-top: 6px; font-size: var(--fs-cap2); color: var(--ink-2); }
 .int-ax b { color: var(--ink); font-weight: 600; }
+
+/* Schlafenszeiten: Uhrzeit-Leiste */
+.swin { display: flex; flex-direction: column; gap: 4px; width: 100%; margin-top: var(--s-3); }
+.swin-plot { position: relative; display: flex; flex-direction: column; gap: 5px; margin-left: 24px; }
+.swin-row { position: relative; display: flex; align-items: center; height: 8px; }
+.swin-d { position: absolute; left: -24px; width: 20px; font-size: var(--fs-cap2); line-height: 1; color: var(--ink-3); }
+.swin-d.on { color: var(--ink); font-weight: 600; }
+.swin-tr { position: relative; flex: 1; height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--neutral) 14%, transparent); }
+.swin-tr i { position: absolute; top: 0; bottom: 0; border-radius: 4px; background: var(--neutral); opacity: .6; }
+.swin-tr i.on { background: var(--c, var(--ink)); opacity: 1; }
+.swin-avg { position: absolute; top: -3px; bottom: -3px; width: 0; border-left: 1.5px dashed color-mix(in srgb, var(--ink) 55%, transparent); transform: translateX(-0.75px); z-index: 1; pointer-events: none; }
+.swin-ax { position: relative; height: 14px; margin-left: 24px; font-size: var(--fs-cap2); color: var(--ink-3); }
+.swin-ax span { position: absolute; top: 0; transform: translateX(-50%); }
+.swin-leg { display: flex; align-items: center; gap: 6px; font-size: var(--fs-cap2); color: var(--ink-2); margin-top: 2px; }
+.swin-leg i { display: inline-block; width: 12px; border-top: 1.5px dashed color-mix(in srgb, var(--ink) 55%, transparent); }
+
+/* Tab-Leiste: abgerundetes Rechteck statt Pille, mehr Luft um Icon und Text */
+.tabs-app { left: 10px; right: 10px; }
+.hp2 .tabs2 { gap: 8px; align-items: stretch; }
+.hp2 .tabs2 .pill { border-radius: 20px; padding: 5px; gap: 2px; }
+.hp2 .tabs2 .pill button { border-radius: 15px; padding: 9px 2px 8px; gap: 5px; min-height: 58px; letter-spacing: 0; }
+.hp2 .tabs2 .pill button svg { width: 21px; height: 21px; }
+.hp2 .tabs2 .more { width: 58px; height: auto; border-radius: 20px; }
+
+/* Aktivität: Verlaufsgraphen mit Luft – jede Kurve eigener Abschnitt mit Kopfzeile */
+.ser { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.ser-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 10px; font-size: var(--fs-foot); color: var(--ink-2); }
+.ser-h b { color: var(--ink); font-weight: 600; }
+.ser .chart text { font-size: 11px; }
+.card .legend-row, .card .legend-in { margin-top: 12px; row-gap: 6px; }
+.chart-sum { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); line-height: var(--lh-foot); }
+
+/* Etwas weniger Rundung bei Kacheln und Karten (vorher 24 px) */
+:root { --r-tile: 18px; --r: 18px; }
+.hp2 .t2 { border-radius: var(--r-tile); }
+
+.hp2 .htile .t2-g .db { margin-top: 12px; }
