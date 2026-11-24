@@ -33,12 +33,12 @@ export function useWidth(ref) {
 }
 
 // Balken ab 0 mit Tagesbeschriftung. items: [{ date, v }], v = null → keine Daten (Lücke)
-export function DayBars({ items, max, avg, avgLabel, goal, goalLabel = 'Ziel', label, fmt = int, unit = '', hlIndex, labels = 'days', topFmt = fmtScale }) {
+export function DayBars({ items, max, avg, avgLabel, goal, goalLabel = 'Ziel', label, fmt = int, unit = '', hlIndex, labels = 'days', topFmt = fmtScale, ends, xLabels, ariaItem }) {
   const vals = items.map((x) => x.v).filter((v) => v != null);
   const top = niceMax(Math.max(max || 0, ...vals, avg || 0, goal || 0));
   const hl = hlIndex != null ? hlIndex : items.length - 1;
   const pct = (v) => Math.max(0, Math.min(100, (v / top) * 100));
-  const aria = label + ': ' + items.map((x) => wdOf(x.date) + ' ' + (x.v == null ? 'keine Daten' : fmt(x.v) + (unit ? ' ' + unit : ''))).join(', ');
+  const aria = label + ': ' + items.map((x, i) => (ariaItem ? ariaItem(x, i) : xLabels ? xLabels[i] : wdOf(x.date)) + ' ' + (x.v == null ? 'keine Daten' : fmt(x.v) + (unit ? ' ' + unit : ''))).join(', ');
   return (
     <div class="db" role="img" aria-label={aria}>
       <div class="db-plot">
@@ -53,10 +53,12 @@ export function DayBars({ items, max, avg, avgLabel, goal, goalLabel = 'Ziel', l
           ))}
         </div>
       </div>
-      <div class="db-ax">
-        {labels === 'days'
+      <div class={'db-ax' + (!xLabels && labels !== 'days' ? ' ends' : '')}>
+        {xLabels
+          ? items.map((x, i) => <span class={(i === hl ? 'on' : '') + (x.v == null ? ' na' : '')}>{xLabels[i]}</span>)
+          : labels === 'days'
           ? items.map((x, i) => <span class={(i === hl ? 'on' : '') + (x.v == null ? ' na' : '')}>{wdOf(x.date)}</span>)
-          : <Fragment><span>{dayMon(items[0].date)}</span><span class="on">{dayMon(items[items.length - 1].date)}</span></Fragment>}
+          : <Fragment><span>{ends ? ends[0] : dayMon(items[0].date)}</span><span class="on">{ends ? ends[1] : dayMon(items[items.length - 1].date)}</span></Fragment>}
       </div>
     </div>
   );

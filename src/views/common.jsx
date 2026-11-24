@@ -5,7 +5,7 @@ import { Mark, Cell, Est } from '../ui/kit.jsx';
 import { km, hm, dur, dateShort, relDate, speedKmh, int, num, timeOf } from '../format.js';
 import { push } from '../nav.js';
 import { decode, merc, encode } from '../geo.js';
-import { ACT_SRC } from '../env.js';
+import { ACT_SRC, WEB } from '../env.js';
 
 export function useData() {
   const [, setV] = useState(getVersion());
@@ -108,8 +108,10 @@ export function zoneHist() {
 // Link zur eigenen 3D-Kartenseite (außerhalb von Claude). Die Strecke steht nur
 // hinter dem # und wird deshalb nie an einen Server gesendet.
 export const SPUR_URL = 'https://claude.ai/artifact/2nZ6hXzZDVyCXHgGidz527';
+// Web-App: ohne eigene Einstellung die eigene Seite Spur 3D (GitHub Pages)
+export const SPUR3D_DEFAULT = 'https://hnnslrchr.github.io/spur-3d/';
 export function map3dBase() {
-  const u = ((getState().settings.main || {}).map3d || '').trim();
+  const u = ((getState().settings.main || {}).map3d || (WEB ? SPUR3D_DEFAULT : '')).trim();
   return /^https:\/\/[^\s#]+$/.test(u) ? u.replace(/\/?$/, '/') : null;
 }
 function thin(pts, max = 1500) {
@@ -134,6 +136,6 @@ export function link3d(items, view) {
     if (it.dist) q.set('k' + sfx, String(Math.round(it.dist)));
   });
   if (view) { q.set('c', view.lat.toFixed(5) + ',' + view.lng.toFixed(5)); q.set('z', String(Math.round(view.z * 10) / 10)); }
-  q.set('r', SPUR_URL);
+  q.set('r', WEB && typeof location !== 'undefined' ? location.origin + '/' : SPUR_URL);
   return base + '#' + q.toString();
 }

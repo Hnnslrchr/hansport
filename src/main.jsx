@@ -26,15 +26,16 @@ import { GymSession, GymExercises, GymExercise, GymTemplates } from './views/gym
 import { More, Goals, GearList, GearItem, Reviews, Review, Settings, DataView, ShareMap, Guide } from './views/more.jsx';
 import { WEB } from './env.js';
 import { webBoot, Sources } from './web/views.jsx';
+import { Dashboard } from './views/dashboard.jsx';
 import { startAlign } from './ui/align.js';
 
 // Aktivitäten mit Umschalter Liste | Karte
 function ActivitiesRoot() {
-  const [mode, setMode] = useState(() => (location.hash === '#karte' ? 'map' : 'list'));
+  const [mode, setMode] = useState(() => (location.hash === '#karte' ? 'map' : location.hash === '#liste' ? 'list' : 'dash'));
   return (
     <div class="view flush root" style="padding-bottom:0">
-      <div style="padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 8px;flex:none"><Seg value={mode} onChange={setMode} label="Ansicht" options={[['list', 'Liste'], ['map', 'Karte']]} /></div>
-      <div style="flex:1;min-height:0;display:flex;flex-direction:column;position:relative">{mode === 'list' ? <Activities /> : <MapTab />}</div>
+      <div style="padding:calc(env(safe-area-inset-top,0px) + 12px) 16px 8px;flex:none"><Seg value={mode} onChange={setMode} label="Ansicht" options={[['dash', 'Überblick'], ['list', 'Liste'], ['map', 'Karte']]} /></div>
+      <div style="flex:1;min-height:0;display:flex;flex-direction:column;position:relative">{mode === 'dash' ? <div class="view" style="padding-top:4px"><Dashboard /><div class="spacer" /></div> : mode === 'list' ? <Activities /> : <MapTab />}</div>
     </div>
   );
 }

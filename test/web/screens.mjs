@@ -30,7 +30,8 @@ for (const scheme of ['dark', 'light']) {
   const ids = await page.evaluate(() => { const l = window.__spur.derived().list; return { road: (l.find((a) => a.poly && a.sport === 'road') || {}).id, gym: (l.find((a) => a.sport === 'gym') || {}).id }; });
   const shots = [
     ['01-heute', () => window.__spur.setTab('today'), 3000, 3000],
-    ['02-aktivitaeten', () => window.__spur.setTab('activities'), 1500, 874],
+    ['02-aktivitaeten', () => window.__spur.setTab('activities'), 2000, 3600],
+    ['14-schlaf', () => { window.__spur.setTab('health'); window.__spur.push('metric', { k: 'sleep' }); }, 2500, 1400],
     ['03-detail', (id) => { window.__spur.setTab('activities'); window.__spur.push('activity', { id }); }, 4000, 2600, ids.road],
     ['04-gesundheit', () => window.__spur.setTab('health'), 2500, 3000],
     ['05-kennzahl-hrv', () => { window.__spur.setTab('health'); window.__spur.push('metric', { k: 'hrv' }); }, 2500, 1800],

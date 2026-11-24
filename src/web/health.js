@@ -93,7 +93,7 @@ async function doSync({ full = false } = {}) {
   const days = {};
   const put = (d, patch) => { if (!d) return; const x = days[d] || (days[d] = {}); for (const [k, v] of Object.entries(patch)) if (v != null) x[k] = v && typeof v === 'object' && !Array.isArray(v) && x[k] && typeof x[k] === 'object' ? { ...x[k], ...v } : v; };
   const notes = [];
-  let firstErr = null, bbDone = false;
+  let firstErr = null, bbDone = false, slProbe = null;
   const step = async (label, fn) => { try { await fn(); } catch (e) { if (['unauthorized', 'garmin_not_configured', 'garmin_key_invalid'].includes(e && e.code)) throw e; firstErr = firstErr || e; notes.push(label + ': ' + explainHealth(e)); } };
   const prog = (t) => setStatus({ healthProgress: t });
   try {
@@ -143,6 +143,21 @@ async function doSync({ full = false } = {}) {
         }
         prog('Schlaf bis ' + e);
       }
+    });
+
+    // 2b) Phasenverlauf: Laut Garmins Spezifikation liefert die Personal API je Nacht nur die Summen je Phase.
+    // Einmal je 30 Tage prüfen, ob die Einzelabfrage doch einen Verlauf (sleepLevels) enthält; wenn ja, für die letzten Nächte übernehmen.
+    await step('Schlafphasen', async () => {
+      const pr = meta.slProbe || {};
+      if (pr.at && !pr.has && Date.now() - pr.at < 30 * 864e5) return;
+      const nights = Object.keys(days).filter((d) => days[d].sl && days[d].sl.total).sort().slice(-3).reverse();
+      let has = false;
+      for (const d of nights) {
+        const x = await garmin('/sleep-service/sleep/dailySleep', { date: d });
+        const tl = levelsTimeline(x);
+        if (tl) { put(d, { sl: { ...(days[d].sl || {}), tl } }); has = true; } else if (!has) break;
+      }
+      slProbe = { at: Date.now(), has };
     });
 
     // 3) HRV (Nachtmittel) und Garmins Normalbereich
@@ -231,7 +246,7 @@ async function doSync({ full = false } = {}) {
     const allDays = Object.keys(days).sort();
     setDoc('meta/health', clean({
       v: 7, src: 'garmin', lastSync: Date.now(), lastDay: allDays.length ? allDays[allDays.length - 1] : (meta.lastDay || today),
-      pmc: pmc || meta.pmc || null, bb30: meta.bb30 || bbDone || null,
+      pmc: pmc || meta.pmc || null, bb30: meta.bb30 || bbDone || null, slProbe: slProbe || meta.slProbe || null,
       notes: notes.length ? notes.slice(0, 5) : null,
     }));
     setStatus({ healthSyncing: false, healthProgress: null });
@@ -255,6 +270,23 @@ function mergeDays(add) {
     out[d] = next;
   }
   return out;
+}
+
+// Schlafphasen-Verlauf aus einer Garmin-Antwort (falls vorhanden): sleepLevels [{ startGMT, endGMT, activityLevel }]
+// activityLevel 0 = Tief, 1 = Leicht, 2 = REM, 3 = Wach. Ergebnis im Format der App: { s0: lokale Minuten, seg: [[Phase, von, bis]] }
+function levelsTimeline(x) {
+  if (!x || typeof x !== 'object') return null;
+  const lv = Array.isArray(x.sleepLevels) ? x.sleepLevels : null;
+  if (!lv || lv.length < 2) return null;
+  const dto = x.dailySleepDTO || x;
+  const t = (v) => (typeof v === 'number' ? v : v ? Date.parse(String(v).replace(' ', 'T') + (/[zZ]|[+-]\d\d:?\d\d$/.test(String(v)) ? '' : 'Z')) : NaN);
+  const off = isFinite(t(dto.sleepStartTimestampLocal)) && isFinite(t(dto.sleepStartTimestampGMT)) ? t(dto.sleepStartTimestampLocal) - t(dto.sleepStartTimestampGMT) : 0;
+  const ST = { 0: 'd', 1: 'l', 2: 'r', 3: 'a' };
+  const segs = lv.map((q) => [ST[Math.round(q.activityLevel)], t(q.startGMT), t(q.endGMT)]).filter((q) => q[0] && isFinite(q[1]) && q[2] > q[1]).sort((a, b) => a[1] - b[1]);
+  if (segs.length < 2) return null;
+  const t0 = segs[0][1];
+  const d = new Date(t0 + off);
+  return { s0: d.getUTCHours() * 60 + d.getUTCMinutes(), seg: segs.map((q) => [q[0], Math.round((q[1] - t0) / 6e4), Math.round((q[2] - t0) / 6e4)]) };
 }
 
 function writeDirty(merged) {

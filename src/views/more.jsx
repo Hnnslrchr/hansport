@@ -1,6 +1,6 @@
 import { h, Fragment } from 'preact';
 import { useMemo, useRef, useState } from 'preact/hooks';
-import { useData, ActRow, zoneHist, gearName } from './common.jsx';
+import { useData, ActRow, zoneHist, gearName, SPUR3D_DEFAULT } from './common.jsx';
 import { GoalRow, unitOf } from './overview.jsx';
 import { Top, Section, Icon, Sheet, Stepper, Note, Cell, Mark, Seg, Progress, sportColor, Stat } from '../ui/kit.jsx';
 import { HBars } from '../ui/charts.jsx';
@@ -374,7 +374,7 @@ export function Settings() {
 }
 
 function Map3dSetting({ set }) {
-  const [url, setUrl] = useState(set.map3d || '');
+  const [url, setUrl] = useState(set.map3d || (WEB ? SPUR3D_DEFAULT : ''));
   // Eingabe tolerant machen: ohne https://, mit http:// oder als github.com-Repo-Link
   const norm = (u) => {
     let x = u.trim().replace(/#.*$/, '');
@@ -394,7 +394,7 @@ function Map3dSetting({ set }) {
         <div class="field"><label for="m3d">Adresse der 3D-Karte</label><input id="m3d" class="input" inputMode="url" autocapitalize="off" spellcheck="false" placeholder="https://…github.io/spur-3d/" value={url} onInput={(e) => setUrl(e.target.value)} /></div>
         {!ok ? <div class="small" style="color:var(--bad)">Das sieht nicht nach einer Web-Adresse aus.</div> : n && n !== url.trim() ? <div class="small muted">Wird gespeichert als: {n}</div> : null}
         <button type="button" class="btn" disabled={!ok} onClick={() => { setUrl(n); setDoc('settings/main', { ...(getState().settings.main || {}), map3d: n || undefined }); toast(n ? '3D-Karte verbunden' : '3D-Karte entfernt'); }}>Speichern</button>
-        {set.map3d ? <a class="btn sec2" href={set.map3d} target="_blank" rel="noopener">3D-Karte testen</a> : null}
+        {set.map3d || WEB ? <a class="btn sec2" href={set.map3d || SPUR3D_DEFAULT} target="_blank" rel="noopener">3D-Karte testen</a> : null}
         <div class="tiny faint">Die Strecke wird nur im Link hinter dem # übergeben. Dieser Teil geht an keinen Server. Die Kartendienste sehen nur, welche Kartenausschnitte geladen werden.</div>
       </div>
     </Section>

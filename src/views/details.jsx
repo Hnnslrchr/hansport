@@ -161,6 +161,23 @@ function sayRhr(pts, band, wk, W, all) {
 }
 
 // ============================== Schlaf ==============================
+// Ohne zeitlichen Verlauf (Garmin Personal API liefert nur Summen je Phase): Anteile der Nacht als ein Balken
+function PhaseBar({ sl }) {
+  const parts = [['d', sl.deep], ['l', sl.light], ['r', sl.rem], ['a', sl.awake]].filter((p) => p[1] > 0);
+  const tot = parts.reduce((t, p) => t + p[1], 0);
+  if (!tot) return null;
+  const name = (k) => (STAGES.find((s) => s.k === k) || {}).name || k;
+  return (
+    <div class="phbar">
+      <div class="phbar-b" role="img" aria-label={'Anteile der Nacht: ' + parts.map((p) => name(p[0]) + ' ' + hmm(p[1]) + ' Stunden').join(', ')}>
+        {parts.map((p) => <span style={{ width: (p[1] / tot) * 100 + '%', background: SL[p[0]] }} />)}
+      </div>
+      <div class="phbar-ax"><span>{sl.start || ''}</span><span>{sl.end || ''}</span></div>
+      <p class="phbar-n">Garmin gibt über die Personal API für diese Nacht nur die Dauer je Phase heraus, nicht ihren zeitlichen Verlauf. Der Balken zeigt deshalb die Anteile, nicht die Reihenfolge.</p>
+    </div>
+  );
+}
+
 const SL = { d: 'var(--sl-d)', l: 'var(--sl-l)', r: 'var(--sl-r)', a: 'var(--sl-a)' };
 export function SleepDetail({ H, end }) {
   const [p, setP] = useState('d');
@@ -193,6 +210,7 @@ export function SleepDetail({ H, end }) {
           sub={selStage ? 'Uhrzeit ' + clockOfMinute(tl.s0 + sel.m) : `${sl.start || '–'}–${sl.end || '–'} · Score ${sl.score != null ? sl.score : '–'}${need ? ' · Bedarf ' + hmm(need) + ' h' : ''}`} />
         <div class="t2" style="padding:10px 10px 6px">
           {tl ? <Hypnogram tl={tl} sel={sel} onSel={setSel} label={'Schlafphasen der Nacht auf ' + dWeek(night)} />
+            : WEB && sl.total ? <PhaseBar sl={sl} />
             : <div class="empty2">Den Phasenverlauf dieser Nacht holt der nächste Abgleich (Ziehen zum Aktualisieren).</div>}
           <div class="nav2">
             <button type="button" aria-label="Nacht davor" disabled={i <= 0} onClick={() => { setNight(nights[i - 1].date); setSel(null); }}><Ico n="nav-arrow-left" /></button>
