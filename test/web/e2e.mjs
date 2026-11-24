@@ -85,6 +85,8 @@ try {
   check(hs.x && hs.x.base && hs.x.base.hrv, 'Basiswerte berechnet: ' + JSON.stringify(hs.x && hs.x.base));
   const wi = await page.evaluate(() => { const H = window.__spur.getState().health; return (H['2026-11'] && H['2026-11'].days['2026-11-21']) || {}; });
   check(wi.wi && wi.wi.weight === 78.1 && wi.wi.fatPct === 17.1 && wi.weight === 78.1 && wi.src.weight === 'withings', 'Withings: ' + JSON.stringify(wi.wi));
+  const ecg = await page.evaluate(() => { const H = window.__spur.getState().health; const m = H['2026-11'] ? H['2026-11'].days : {}; return { a: m['2026-11-23'] && m['2026-11-23'].wi && m['2026-11-23'].wi.ecg, b: m['2026-11-17'] && m['2026-11-17'].wi && m['2026-11-17'].wi.ecg, n: Object.values(m).filter((x) => x.wi && x.wi.ecg).length, meta: (window.__spur.getState().meta.health || {}).ecg }; });
+  check(ecg.a && ecg.a.afib === 0 && ecg.a.hr === 58 && ecg.a.qrs === 94 && ecg.a.qtc === 411 && ecg.a.sid === 9000 && ecg.b && ecg.b.afib === 2 && ecg.meta && ecg.meta.n >= 19, 'Withings-EKG übernommen: ' + JSON.stringify(ecg));
   check(hs.meta.v === 7 && hs.meta.src === 'garmin', 'meta/health v7 (' + JSON.stringify(hs.meta.notes || null) + ')');
   }
 
@@ -101,8 +103,15 @@ try {
   await page.evaluate(() => { window.__spur.setTab('today'); });
   await sleep(1200);
   await page.screenshot({ path: 'test/shots/web-today.png' });
+  await page.evaluate(() => { window.__spur.setTab('health'); });
+  await page.waitForSelector('.ecg');
+  await page.click('.ecg-btn');
+  await page.waitForSelector('.ecg-curve svg path', { timeout: 8000 });
+  const eg = await page.evaluate(() => ({ res: document.querySelector('.ecg-res').textContent, iv: document.querySelectorAll('.ecg-iv span').length, cells: document.querySelectorAll('.ecg-days .ecg-c').length, rel: !!document.querySelector('.rr-row'), nv: document.body.textContent.includes('Nicht verfügbar') }));
+  check(eg.res.includes('Keine Anzeichen') && eg.iv === 4 && eg.cells === 14 && !eg.nv, 'Gesundheit: EKG-Kachel mit Kurve, Intervallen und 14 Tagen ' + JSON.stringify(eg));
   await page.evaluate(() => { window.__spur.setTab('more'); window.__spur.push('sources'); });
   await page.waitForSelector('text=Datenquellen');
+  await page.waitForSelector('text=EKG an ');
   await page.waitForSelector('text=Verbindung prüfen');
   await page.click('text=Verbindung prüfen');
   await page.waitForSelector('text=verbunden', { timeout: 8000 });

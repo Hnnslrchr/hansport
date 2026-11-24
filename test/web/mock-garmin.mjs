@@ -70,10 +70,29 @@ http.createServer(async (req, res) => {
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     return res.end('event: message\ndata: ' + JSON.stringify({ jsonrpc: '2.0', id: m.id, result }) + '\n\n');
   }
+  if (p === '/v2/heart') {
+    let body = ''; for await (const c of req) body += c;
+    if (req.headers.authorization !== 'Bearer wtok') return json({ status: 401 });
+    const b = new URLSearchParams(body);
+    calls['w:heart:' + b.get('action')] = (calls['w:heart:' + b.get('action')] || 0) + 1;
+    if (b.get('action') === 'get') {
+      const fs = 300, sig = [];
+      for (let i = 0; i < fs * 30; i++) { const ph = (i % 270) / fs; sig.push(Math.round(80 * Math.sin(i / 60) + (ph < 0.03 ? 1100 * Math.sin((ph / 0.03) * Math.PI) : 0) + (ph > 0.25 && ph < 0.45 ? 220 * Math.sin(((ph - 0.25) / 0.2) * Math.PI) : 0))); }
+      return json({ status: 0, body: { signal: sig, sampling_frequency: fs, wearposition: 28 } });
+    }
+    const day = (d, h) => Math.floor(Date.parse(d + 'T' + h + ':00Z') / 1000);
+    const series = [];
+    for (let j = 0; j < 20; j++) { const d = new Date(Date.parse('2026-11-23T00:00:00Z') - j * 86400000).toISOString().slice(0, 10); if (j === 4) continue; series.push({ deviceid: 'x', model: 0, ecg: { signalid: 9000 + j, afib: j === 6 ? 2 : 0 }, heart_rate: 58 + (j % 5), timestamp: day(d, '06:12'), timezone: 'Europe/Rome' }); }
+    return json({ status: 0, body: { series, more: false, offset: 0 } });
+  }
   if (p === '/measure') {
     let body = ''; for await (const c of req) body += c;
     if (req.headers.authorization !== 'Bearer wtok') return json({ status: 401 });
     const t = Math.floor(Date.parse('2026-11-21T06:30:00Z') / 1000);
+    if ((new URLSearchParams(body).get('meastypes') || '').startsWith('135')) {
+      const t2 = Math.floor(Date.parse('2026-11-23T06:12:00Z') / 1000);
+      return json({ status: 0, body: { timezone: 'Europe/Rome', more: 0, offset: 0, measuregrps: [{ grpid: 2, date: t2, category: 1, measures: [{ value: 94, type: 135, unit: -3 }, { value: 158, type: 136, unit: -3 }, { value: 402, type: 137, unit: -3 }, { value: 411, type: 138, unit: -3 }] }] } });
+    }
     return json({ status: 0, body: { timezone: 'Europe/Rome', more: 0, offset: 0, measuregrps: [{ grpid: 1, date: t, category: 1, measures: [{ value: 78123, type: 1, unit: -3 }, { value: 171, type: 6, unit: -1 }, { value: 13360, type: 8, unit: -3 }, { value: 6122, type: 76, unit: -3 }, { value: 7, type: 170, unit: 0 }] }] } });
   }
   if (p === '/v1/messages') {

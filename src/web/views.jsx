@@ -6,7 +6,7 @@ import { toast, COLLS, getState, setDoc, derived, subscribe } from '../store.js'
 import { useData } from '../views/common.jsx';
 import { api } from './api.js';
 import { bulkWrite } from './db.js';
-import { athletedataOn, athletedataWanted, setAthletedataUse, recomputeHealth, healthDays } from './health.js';
+import { athletedataOn, athletedataWanted, setAthletedataUse, recomputeHealth, healthDays, healthMeta } from './health.js';
 import { fitPaused } from './acts.js';
 import { seedGear, gearSeed } from '../gear.js';
 
@@ -50,6 +50,7 @@ export function Sources() {
   const sync = S.meta.sync || {}, hm = S.meta.health || {};
   const H = healthDays();
   const lastW = H.list.slice().reverse().find((r) => r.wi && r.wi.weight != null);
+  const nEcg = H.list.filter((r) => r.wi && r.wi.ecg).length;
   const nStrava = d.list.filter((a) => a.src === 'strava' && a.origin === 'strava').length;
   const nGarmin = d.list.filter((a) => a.origin === 'garmin').length;
   const set = S.settings.main || {};
@@ -72,8 +73,9 @@ export function Sources() {
                 {g.configured ? <button type="button" class="btn sec2" disabled={busy} onClick={check}>{busy ? 'Prüfe …' : 'Verbindung prüfen'}</button> : null}
               </Row>
               <Row name="Withings" ok={w.connected} state={!w.configured ? 'nicht eingerichtet' : w.connected ? 'verbunden' : 'nicht verbunden'}>
-                <div class="small muted">Gewicht und Körperzusammensetzung.</div>
+                <div class="small muted">Gewicht, Körperzusammensetzung und EKG der Waage.</div>
                 <div class="small">{lastW ? 'Letzte Messung ' + dMid(lastW.date) : 'Noch keine Messung'}{w.connected && w.since ? ' · verbunden seit ' + dt(w.since) : ''}</div>
+                {w.connected && (nEcg || healthMeta().ecg) ? <div class="small">{nEcg ? 'EKG an ' + nEcg + ' Tagen übernommen' : 'EKG: Withings hat bisher keine Aufnahmen übermittelt'}</div> : null}
                 {!w.configured ? <div class="tiny faint">Braucht eine eigene Withings-Entwickler-App (WITHINGS_CLIENT_ID und WITHINGS_CLIENT_SECRET in Vercel).</div> : null}
                 {w.configured && !w.connected ? <a class="btn" href="/api/withings?a=start">Mit Withings verbinden</a> : null}
                 {w.connected ? <button type="button" class="btn sec2" onClick={unlink}>Withings trennen</button> : null}

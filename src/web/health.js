@@ -93,7 +93,7 @@ async function doSync({ full = false } = {}) {
   const days = {};
   const put = (d, patch) => { if (!d) return; const x = days[d] || (days[d] = {}); for (const [k, v] of Object.entries(patch)) if (v != null) x[k] = v && typeof v === 'object' && !Array.isArray(v) && x[k] && typeof x[k] === 'object' ? { ...x[k], ...v } : v; };
   const notes = [];
-  let firstErr = null, bbDone = false, slProbe = null;
+  let firstErr = null, bbDone = false, slProbe = null, ecgDone = null;
   const step = async (label, fn) => { try { await fn(); } catch (e) { if (['unauthorized', 'garmin_not_configured', 'garmin_key_invalid'].includes(e && e.code)) throw e; firstErr = firstErr || e; notes.push(label + ': ' + explainHealth(e)); } };
   const prog = (t) => setStatus({ healthProgress: t });
   try {
@@ -229,6 +229,29 @@ async function doSync({ full = false } = {}) {
       prog('Withings');
     });
 
+    // EKG der Waage (Body Scan): Ergebnis laut Withings, Puls, Intervalle; beim ersten Mal 2 Jahre zurück
+    await step('Withings EKG', async () => {
+      const ws = await api('/api/withings?a=status');
+      if (!ws.configured || !ws.connected) return;
+      const eFrom = fresh || !meta.ecg ? addDays(today, -730) : addDays(meta.lastDay || today, -10);
+      const toTs = Math.floor(Date.now() / 1000) + 3600;
+      const r = await api('/api/withings?a=heart&from=' + Math.floor(new Date(eFrom + 'T00:00:00Z').getTime() / 1000) + '&to=' + toTs);
+      const E = {};
+      for (const x of ((r && r.records) || []).slice().sort((a, b) => a.t - b.t)) {
+        const d = localDate(x.t * 1000, x.tz || TZ);
+        const prev = E[d];
+        E[d] = { t: new Date(x.t * 1000).toISOString(), afib: x.afib, hr: x.hr != null ? Math.round(x.hr) : null, sid: x.sid, n: (prev ? prev.n : 0) + 1 };
+      }
+      const IV = { 135: 'qrs', 136: 'pr', 137: 'qt', 138: 'qtc' };
+      for (const g of (r && r.intervals) || []) {
+        const d = localDate(g.date * 1000, g.tz || TZ);
+        for (const m of g.measures) if (IV[m.type] && m.v > 0) (E[d] = E[d] || { n: 0 })[IV[m.type]] = Math.round(m.v < 5 ? m.v * 1000 : m.v);
+      }
+      for (const [d, e] of Object.entries(E)) put(d, { wi: { ...((days[d] && days[d].wi) || {}), ecg: e } });
+      ecgDone = { at: Date.now(), n: Object.keys(E).length, iv: r && r.note ? 0 : 1 };
+      prog('Withings EKG');
+    });
+
     if (!Object.keys(days).length && firstErr) throw new HealthError(firstErr.code || 'unknown', notes.join(' · '));
 
     // Speichern: je Monat ein Dokument, vorhandene Tage zusammenführen (Unterobjekte ebenfalls)
@@ -246,7 +269,7 @@ async function doSync({ full = false } = {}) {
     const allDays = Object.keys(days).sort();
     setDoc('meta/health', clean({
       v: 7, src: 'garmin', lastSync: Date.now(), lastDay: allDays.length ? allDays[allDays.length - 1] : (meta.lastDay || today),
-      pmc: pmc || meta.pmc || null, bb30: meta.bb30 || bbDone || null, slProbe: slProbe || meta.slProbe || null,
+      pmc: pmc || meta.pmc || null, bb30: meta.bb30 || bbDone || null, ecg: ecgDone || meta.ecg || null, slProbe: slProbe || meta.slProbe || null,
       notes: notes.length ? notes.slice(0, 5) : null,
     }));
     setStatus({ healthSyncing: false, healthProgress: null });
@@ -410,4 +433,9 @@ function computePmc(all, today) {
     date: today, conf: hist.length >= 42 ? 'medium' : 'low', since: days[0], src: 'hansport',
     n: clean({ re: L.nRe, hr: L.nHr, garmin: L.nG }), k: L.kT, calib: L.calib,
   });
+}
+
+// EKG-Kurve einer Withings-Aufnahme laden (nur zur Anzeige, wird nicht gespeichert)
+export async function ecgSignal(sid) {
+  try { return await api('/api/withings?a=signal&id=' + encodeURIComponent(sid)); } catch (e) { return { ok: false, err: explainHealth(e) }; }
 }

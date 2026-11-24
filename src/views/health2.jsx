@@ -15,6 +15,7 @@ import { useStatus, useData } from './common.jsx';
 import { refreshAll } from './today.jsx';
 import { GROUP } from './metric.jsx';
 import { WEB } from '../env.js';
+import { EcgTile } from './ecg.jsx';
 
 const n0 = (v) => num(v, 0), n1 = (v) => num(v, 1);
 const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
@@ -199,51 +200,104 @@ function LongTerm({ H, end }) {
   );
 }
 
+// Zusammenhänge: Tage (oder Wochen) nach dem Auslöser in drei gleich große Gruppen teilen und das Ergebnis je Gruppe vergleichen
+const quant = (s, p) => { const i = (s.length - 1) * p, a = Math.floor(i), b = Math.ceil(i); return s[a] + (s[b] - s[a]) * (i - a); };
+const sgn = (v, d) => (v > 0 ? '+' : v < 0 ? '−' : '±') + num(Math.abs(v), d);
+const EFF = (es) => { const a = Math.abs(es); return a < 0.2 ? 'Kaum Unterschied' : a < 0.5 ? 'Kleiner Unterschied' : a < 0.8 ? 'Spürbarer Unterschied' : 'Deutlicher Unterschied'; };
 function Relations({ H, end, acts }) {
   const [k, setK] = useState('load');
+  const [dots, setDots] = useState(false);
   const [sel, setSel] = useState(null);
   const R = useMemo(() => {
     if (k === 'load') {
       const P = [];
       for (const r of H.list) { if (r.date > end || r.hrv == null) continue; const nx = H.map[addD(r.date, 1)]; if (!nx || nx.hrv == null) continue; P.push({ x: r.load || 0, y: nx.hrv, date: r.date }); }
-      return { P, xl: 'Belastung am Tag', xu: 'Last', yl: 'HRV am Folgetag', yu: 'ms', g: 'erh', hi: (x, d) => `An Tagen mit hoher Belastung (oberes Drittel, ab ${num(x, 0)}) lag deine HRV am Folgetag im Mittel ${d}ms ${''}gegenüber den Tagen mit der geringsten Belastung.` };
+      return { P, q: 'Wie reagiert deine HRV am nächsten Morgen auf einen harten Trainingstag?', names: ['Ruhige Tage', 'Mittlere Tage', 'Harte Tage'], zeroName: 'Ruhetage', none: 'ohne Belastung', xl: 'Belastung', xu: 'Last', xf: n0, yl: 'HRV am Folgetag', yu: 'ms', yf: n0, df: (v) => sgn(v, 0), per: 'Tage', min: 20, g: 'erh',
+        say: (hi, lo, u) => `Nach harten Tagen lag deine HRV am nächsten Morgen im Schnitt bei ${hi} ${u}, nach ruhigen Tagen bei ${lo} ${u}.`, swing: 'deine HRV von Tag zu Tag' };
     }
     if (k === 'sleep') {
       const P = []; for (const r of H.list) { const v = M.rec.get(r); if (r.date <= end && r.sl && r.sl.total && v != null) P.push({ x: r.sl.total / 60, y: v, date: r.date }); }
-      return { P, xl: 'Schlafdauer', xu: 'h', yl: 'Bereitschaft am Morgen', yu: '/100', g: 'sch', hi: (x, d) => `Nach den längsten Nächten (oberes Drittel, ab ${num(x, 1)} h) lag deine Bereitschaft im Mittel ${d}Punkte gegenüber den kürzesten Nächten.` };
+      return { P, q: 'Bist du nach längeren Nächten am Morgen bereiter?', names: ['Kurze Nächte', 'Mittlere Nächte', 'Lange Nächte'], xl: 'Schlafdauer', xu: 'h', xf: (v) => hmm(v * 60), yl: 'Bereitschaft am Morgen', yu: 'Punkte', yuD: 'Punkten', yf: n0, df: (v) => sgn(v, 0), per: 'Nächte', min: 20, g: 'sch',
+        say: (hi, lo, u) => `Nach langen Nächten lag deine Bereitschaft im Schnitt bei ${hi} ${u}, nach kurzen Nächten bei ${lo} ${u}.`, swing: 'deine Bereitschaft von Tag zu Tag' };
     }
-    // Trainingsumfang je Woche ↔ Gewichtsänderung zur Vorwoche
+    // Trainingszeit je Woche ↔ Gewichtsänderung zur Vorwoche
     const wk = (iso) => { const d = new Date(tOf(iso)); return isoOf(tOf(iso) - ((d.getUTCDay() + 6) % 7) * DAY); };
     const vol = {}; for (const a of acts) { if (a.excluded) continue; const w = wk(a.date); vol[w] = (vol[w] || 0) + (a.mov || 0) / 3600; }
     const wt = {}; for (const r of H.list) if (r.wi && r.wi.weight) { const w = wk(r.date); (wt[w] = wt[w] || []).push(r.wi.weight); }
     const P = []; for (const w of Object.keys(wt)) { const pw = isoOf(tOf(w) - 7 * DAY); if (!wt[pw]) continue; P.push({ x: vol[w] || 0, y: mean(wt[w]) - mean(wt[pw]), date: w }); }
-    return { P, xl: 'Training pro Woche', xu: 'h', yl: 'Gewichtsänderung zur Vorwoche', yu: 'kg', g: 'kor', hi: (x, d) => `In Wochen mit viel Training (oberes Drittel, ab ${num(x, 1)} h) veränderte sich dein Gewicht im Mittel um ${d}kg gegenüber den Wochen mit wenig Training.` };
+    return { P, q: 'Verändert sich dein Gewicht in Wochen mit viel Training anders als in ruhigen Wochen?', names: ['Wenig Training', 'Mittel', 'Viel Training'], zeroName: 'Ohne Training', none: 'kein Training', xl: 'Trainingszeit pro Woche', xu: 'h', xf: n1, yl: 'Gewicht zur Vorwoche', yu: 'kg', yf: (v) => sgn(v, 1), df: (v) => sgn(v, 1), per: 'Wochen', min: 8, g: 'kor', zero: true,
+      say: (hi, lo, u) => `In Wochen mit viel Training hat sich dein Gewicht im Schnitt um ${hi} ${u} verändert, in Wochen mit wenig Training um ${lo} ${u}.`, swing: 'dein Gewicht von Woche zu Woche' };
   }, [H, k, acts]);
-  const P = R.P.map((p, i) => ({ ...p, t: p.x, v: p.y, i }));
-  const enough = P.length >= (k === 'weight' ? 8 : 20) && new Set(P.map((p) => Math.round(p.x * 10))).size >= 5;
-  const r = enough ? pearson(P.map((p) => p.x), P.map((p) => p.y)) : null;
+
+  const P = R.P;
+  const G = useMemo(() => {
+    if (P.length < R.min) return null;
+    const xs = P.map((p) => p.x).sort((a, b) => a - b);
+    const c1 = quant(xs, 1 / 3), c2 = quant(xs, 2 / 3);
+    const parts = [P.filter((p) => p.x <= c1), P.filter((p) => p.x > c1 && p.x <= c2), P.filter((p) => p.x > c2)];
+    const minG = k === 'weight' ? 3 : 5;
+    const rows = parts.map((a, i) => {
+      if (a.length < minG) return null;
+      const ys = a.map((p) => p.y).sort((p, q) => p - q), xv = a.map((p) => p.x);
+      const x0 = Math.min(...xv), x1 = Math.max(...xv);
+      return { i, n: a.length, m: mean(ys), q1: quant(ys, 0.25), q3: quant(ys, 0.75), x0, x1, name: x1 === 0 && R.zeroName ? R.zeroName : R.names[i] };
+    }).filter(Boolean);
+    if (rows.length < 2 || rows[0].i !== 0 || rows[rows.length - 1].i !== 2) return null;
+    const ys = P.map((p) => p.y), all = mean(ys), s = sd(ys) || 1;
+    const lo = rows[0], hi = rows[rows.length - 1], d = hi.m - lo.m;
+    const ref = R.zero ? 0 : all;
+    const t = niceTicks(Math.min(ref, ...rows.map((r) => Math.min(r.q1, r.m))), Math.max(ref, ...rows.map((r) => Math.max(r.q3, r.m))), 4, k !== 'weight');
+    // Unterschied nur „klar“, wenn er mehr als doppelt so groß ist wie der Zufallsfehler der beiden Gruppenmittel
+    const se = s * Math.sqrt(1 / lo.n + 1 / hi.n);
+    return { rows, all, s, d, es: d / s, clear: Math.abs(d) >= 2 * se, few: lo.n + hi.n < 30, ref, t, r: pearson(P.map((p) => p.x), P.map((p) => p.y)), from: P.reduce((a, p) => (p.date < a ? p.date : a), P[0].date) };
+  }, [P, k]);
+
+  const pos = (v) => (G ? ((v - G.t.min) / (G.t.max - G.t.min)) * 100 : 0);
+  const rng = (r) => (r.x1 === 0 ? R.none : r.x0 === r.x1 ? R.xf(r.x0) + NB + R.xu : R.xf(r.x0) + '–' + R.xf(r.x1) + NB + R.xu);
+  const PT = P.map((p, i) => ({ ...p, t: p.x, v: p.y, i }));
   const xs = P.map((p) => p.x), ys = P.map((p) => p.y);
   const xt = P.length ? niceTicks(Math.min(0, ...xs), Math.max(...xs), 4, k !== 'weight') : null;
   const yt = P.length ? niceTicks(Math.min(...ys), Math.max(...ys), 4, k !== 'weight') : null;
-  let say = '';
-  if (enough) {
-    const sorted = [...P].sort((a, b) => a.x - b.x), third = Math.max(3, Math.floor(P.length / 3));
-    const lo = sorted.slice(0, third), hi = sorted.slice(-third);
-    const d = mean(hi.map((p) => p.y)) - mean(lo.map((p) => p.y));
-    const f = (v) => (k === 'weight' ? num(v, 2) : num(v, 1));
-    say = `Es gibt ${rWord(r)} Zusammenhang (r = ${num(r, 2)}, n = ${P.length}). ` + R.hi(hi[0].x, (d > 0 ? '+' : d < 0 ? '−' : '±') + f(Math.abs(d)) + ' ');
-  }
   return (
     <div class={'g-' + R.g}>
-      <Seg2 value={k} onChange={(v) => { setK(v); setSel(null); }} label="Zusammenhang" options={[['load', 'Last → HRV'], ['sleep', 'Schlaf → Bereitschaft'], ['weight', 'Umfang → Gewicht']]} />
-      <div class="t2" style="padding:8px 10px 6px;margin-top:10px">
-        {P.length >= 3 ? (
-          <TimeChart height={190} x={{ min: xt.min, max: xt.max, ticks: xt.ticks.map((v) => ({ t: v, label: num(v, k === 'weight' ? 0 : 0) })) }} y={yt} unit={R.yu} label={R.yl + ' gegen ' + R.xl} snap={P} sel={sel} onSel={setSel} marks={(q) => [{ v: q.v, color: 'var(--c)' }]} animKey={k}
-            yFmt={(v) => num(v, k === 'weight' ? 1 : 0)} layers={(s) => [k === 'weight' ? <RefLine s={s} v={0} /> : null, <Points s={s} data={P} color="var(--c)" r={3.5} />]} />
-        ) : <div class="empty2">Noch zu wenige gemeinsame Tage. Ab 20 Tagen mit beiden Werten erscheint der Zusammenhang.</div>}
-        <div class="sub2" style="text-align:right;margin:2px 4px 0">x: {R.xl} ({R.xu})</div>
+      <Seg2 value={k} onChange={(v) => { setK(v); setSel(null); }} label="Zusammenhang" options={[['load', <span class="seg-2l">Training<br />→ HRV</span>], ['sleep', <span class="seg-2l">Schlaf<br />→ Bereitschaft</span>], ['weight', <span class="seg-2l">Training<br />→ Gewicht</span>]]} />
+      <div class="t2 rel" style="margin-top:10px">
+        <div class="rel-q">{R.q}</div>
+        {G ? (
+          <Fragment>
+            <p class="rel-a">{R.say(R.yf(G.rows[G.rows.length - 1].m), R.yf(G.rows[0].m), R.yuD || R.yu)}</p>
+            <div class="rel-chip"><b>{G.clear ? EFF(G.es) : 'Kein klarer Unterschied'}</b><span>{R.df(G.d)}{NB}{R.yu}</span></div>
+            <div class="rr" role="list">
+              {G.rows.map((r) => (
+                <div class={'rr-row' + (r.i === 1 ? ' mid' : '')} role="listitem" aria-label={`${r.name}, ${rng(r)}, ${r.n} ${R.per}: Durchschnitt ${R.yf(r.m)} ${R.yu}, meist ${R.yf(r.q1)} bis ${R.yf(r.q3)}`}>
+                  <div class="rr-h"><span class="rr-n">{r.name}</span><span class="rr-v"><b>{R.yf(r.m)}</b><small>{R.yu}</small></span></div>
+                  <div class="rr-s"><span>{rng(r)} · {r.n} {R.per}</span><span>meist {R.yf(r.q1)} bis {R.yf(r.q3)}</span></div>
+                  <div class="rr-tr" aria-hidden="true">
+                    <i class="rr-ref" style={{ left: pos(G.ref) + '%' }} />
+                    <i class="rr-iqr" style={{ left: pos(r.q1) + '%', width: Math.max(1.5, pos(r.q3) - pos(r.q1)) + '%' }} />
+                    <i class="rr-dot" style={{ left: pos(r.m) + '%' }} />
+                  </div>
+                </div>
+              ))}
+              <div class="rr-ax" aria-hidden="true">{G.t.ticks.map((v) => <span style={{ left: pos(v) + '%' }}>{k === 'weight' ? R.yf(v).replace('±', '') : R.yf(v)}</span>)}</div>
+              <div class="rr-leg"><span><i class="rr-dot" />Durchschnitt</span><span><i class="rr-iqr" />mittlere Hälfte der {R.per}</span><span><i class="rr-ref" />{R.zero ? 'keine Veränderung' : 'Ø aller ' + R.per + ' ' + R.yf(G.all)}</span></div>
+            </div>
+            <p class="say2" style="margin-top:12px">{G.clear
+              ? `Das ist mehr, als Zufall erklären würde. Zum Vergleich: ${R.swing} schwankt im Mittel um ±${R.yf(G.s).replace(/^[+−±]/, '')} ${R.yu}.`
+              : `Der Unterschied von ${R.df(G.d)} ${R.yuD || R.yu} kann auch Zufall sein: ${R.swing} schwankt im Mittel um ±${R.yf(G.s).replace(/^[+−±]/, '')} ${R.yu}${G.few ? ', und die Gruppen sind noch klein' : ''}.`} Das zeigt einen Zusammenhang, keine Ursache.</p>
+            <div class="sub2">{P.length} {R.per} seit {dayMon(G.from)} {G.from.slice(0, 4)} · Gruppen nach {R.xl}, je etwa ein Drittel · r = {num(G.r, 2)}</div>
+          </Fragment>
+        ) : <p class="say2">{P.length < R.min ? `Für eine Aussage braucht es mindestens ${R.min} ${R.per} mit beiden Werten; bisher ${P.length}.` : `Die ${R.per} unterscheiden sich in der ${R.xl} noch zu wenig, um Gruppen zu vergleichen.`}</p>}
+        {P.length >= 3 ? <button type="button" class="btn sec2 rel-more" aria-expanded={dots ? 'true' : 'false'} onClick={() => { setDots(!dots); setSel(null); }}><Ico n={dots ? 'nav-arrow-up' : 'nav-arrow-down'} />{dots ? 'Einzelwerte ausblenden' : 'Alle ' + R.per + ' als Punkte zeigen'}</button> : null}
+        {dots && P.length >= 3 ? (
+          <div class="rel-dots">
+            <TimeChart height={180} x={{ min: xt.min, max: xt.max, ticks: xt.ticks.map((v) => ({ t: v, label: num(v, 0) })) }} y={yt} unit={R.yu} label={R.yl + ' gegen ' + R.xl} snap={PT} sel={sel} onSel={setSel} marks={(q) => [{ v: q.v, color: 'var(--c)' }]} animKey={k}
+              yFmt={(v) => num(v, k === 'weight' ? 1 : 0)} layers={(s) => [k === 'weight' ? <RefLine s={s} v={0} /> : null, <Points s={s} data={PT} color="var(--c)" r={3} />]} />
+            <div class="sub2" style="display:flex;justify-content:space-between;margin:2px 4px 0"><span>↑ {R.yl} ({R.yu})</span><span>{R.xl} ({R.xu}) →</span></div>
+            {sel ? <p class="say2">{dShort(sel.date)}: {R.xf(sel.x)} {R.xu} → {R.yf(sel.y)} {R.yu}</p> : null}
+          </div>
+        ) : null}
       </div>
-      <p class="say2">{sel ? `${dShort(sel.date)}: ${num(sel.x, 1)} ${R.xu} → ${num(sel.y, k === 'weight' ? 2 : 0)} ${R.yu}. ` : ''}{enough ? say + ' Das ist ein Zusammenhang, keine Ursache.' : `Für eine Aussage braucht es mindestens ${k === 'weight' ? 8 : 20} gemeinsame ${k === 'weight' ? 'Wochen' : 'Tage'} mit unterschiedlichen Werten; bisher ${P.length}.`}</p>
     </div>
   );
 }
@@ -301,6 +355,7 @@ export function Health() {
             <div class="hsec"><Ico n="heart" />Herz</div>
             <div class="h-grid">
               <Tile s={S.rhr} wide><MiniDots pts={daily(H.list, (r) => r.rhr, addD(today, -27), today)} band={S.rhr && S.rhr.range} /></Tile>
+              <EcgTile H={H} today={today} meta={meta} hideEmpty={(getState().settings.main || {}).hideEmpty !== false} />
               <Tile s={S.resp}><MiniLine pts={daily(H.list, (r) => r.resp, addD(today, -13), today)} w={150} hgt={44} /></Tile>
               <Tile s={S.vo2} sub={S.vo2 && S.vo2.r.fitAge ? 'Fitnessalter ' + S.vo2.r.fitAge : null}><MiniLine pts={daily(H.list, (r) => r.vo2, addD(today, -180), today)} w={150} hgt={44} /></Tile>
             </div>
@@ -356,11 +411,6 @@ export function Health() {
             <div class="hsec"><Ico n="calendar" />Wochenmuster</div>
             <Weekdays H={H} end={today} />
 
-            <div class="hsec"><Ico n="info-circle" />Nicht verfügbar</div>
-            <div class="list">
-              <div class="mrow"><span class="ic"><Ico n="heart" /></span><span><div class="t1">Blutdruck</div><div class="t2">Kein Messgerät verbunden (z. B. Withings BPM).</div></span><span class="v hp-none">–</span></div>
-              <div class="mrow"><span class="ic"><Ico n="droplet" /></span><span><div class="t1">SpO2</div><div class="t2">Garmin liefert derzeit keine Werte.</div></span><span class="v hp-none">–</span></div>
-            </div>
             <div class="sub2" style="padding:12px 2px 0">{meta.lastSync ? 'Zuletzt abgeglichen ' + new Date(meta.lastSync).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '. ' : ''}Automatischer Abgleich beim Öffnen und stündlich, solange hansport offen ist. {WEB ? 'Puls, Stress und Body Battery kommen von Garmin als Tageswerte.' : 'Puls, Stress und Body Battery liefert athletedata nur als Tageswerte.'}</div>
           </Fragment>
         )}

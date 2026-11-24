@@ -259,4 +259,5 @@ export function healthDays() {
 }
 // Nur die Web-Version rechnet Belastung und Bereitschaft selbst nach
 export const recomputeHealth = () => null;
+export const ecgSignal = async () => ({ ok: false });
 export const healthMeta = () => (getState().meta && getState().meta.health) || {};

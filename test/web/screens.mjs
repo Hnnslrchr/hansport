@@ -1,10 +1,11 @@
 // Alle Screens hell und dunkel auf 402 × 874 (Design-Check), mit Testdaten
 import { spawn } from 'node:child_process';
-import { rmSync, mkdirSync } from 'node:fs';
+import { rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-rmSync('/tmp/hsdata3', { recursive: true, force: true }); mkdirSync('/tmp/hsdata3', { recursive: true });
-const env = { ...process.env, APP_PASSWORD: 'pw', HANSPORT_LOCAL_DATA: '/tmp/hsdata3', GARMIN_API_KEY: 'test-key', GARMIN_BASE_URL: 'http://localhost:8790', ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: 'http://localhost:8790' };
+rmSync('/tmp/hsdata3', { recursive: true, force: true }); mkdirSync('/tmp/hsdata3/sys', { recursive: true });
+writeFileSync('/tmp/hsdata3/sys/withings.json', JSON.stringify({ access: 'wtok', refresh: 'r', exp: Date.now() + 3600_000, userid: '1', at: Date.now() }));
+const env = { ...process.env, APP_PASSWORD: 'pw', HANSPORT_LOCAL_DATA: '/tmp/hsdata3', GARMIN_API_KEY: 'test-key', GARMIN_BASE_URL: 'http://localhost:8790', WITHINGS_CLIENT_ID: 'wid', WITHINGS_CLIENT_SECRET: 'wsec', WITHINGS_BASE_URL: 'http://localhost:8790', ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: 'http://localhost:8790' };
 const mock = spawn('node', ['test/web/mock-garmin.mjs', '8790'], { env, stdio: 'ignore' });
 const srv = spawn('node', ['tools/dev-server.mjs', '8787'], { env, stdio: 'ignore' });
 await sleep(1500);
@@ -32,7 +33,7 @@ for (const scheme of ['dark', 'light']) {
     ['01-heute', () => window.__spur.setTab('today'), 3000, 3000],
     ['02-aktivitaeten', () => window.__spur.setTab('activities'), 2000, 3600],
     ['03-detail', (id) => { window.__spur.setTab('activities'); window.__spur.push('activity', { id }); }, 4000, 2600, ids.road],
-    ['04-gesundheit', () => window.__spur.setTab('health'), 2500, 3000],
+    ['04-gesundheit', () => window.__spur.setTab('health'), 2500, 6400],
     ['05-kennzahl-hrv', () => { window.__spur.setTab('health'); window.__spur.push('metric', { k: 'hrv' }); }, 2500, 1800],
     ['06-coach', () => window.__spur.setTab('coach'), 2500, 2200],
     ['07-berichte', () => { window.__spur.setTab('more'); window.__spur.push('reviews'); }, 2000, 1400],
