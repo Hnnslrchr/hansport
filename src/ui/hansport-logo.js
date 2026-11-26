@@ -1,6 +1,6 @@
 // hansport Logo – Blende + Oxanium. Framework-neutral: liefert SVG-Strings.
 // hansportSvg({ variant, size, color, title, animated })
-//   variant: "lockup" (Standard) | "mark" | "wordmark" | "icon" (App-Icon „Orb“)
+//   variant: "lockup" (Standard) | "mark" | "wordmark" | "icon" (App-Icon „Silber“)
 //   size:    Höhe in px
 //   color:   Farbe von Zeichen und Schrift, Standard "currentColor" (folgt der Textfarbe)
 //   animated: Striche zeichnen sich nacheinander ein (Ladebildschirm); respektiert „Bewegung reduzieren“
@@ -12,23 +12,24 @@ const MARK_TF = "scale(1.52284) translate(-12.6 -12.3)";
 const MARK_SW = 5.561;
 const LOCK_VB = "-6 -6 432.21 88.22";
 const WORD_VB = "79.20 -6 347.01 88.22";
-// App-Icon „Orb“ (Runde 6): helle Kachel, weiche Verlaufskugel, weißes Zeichen
-export const ORB_TILE = "#F1F1F3";
-const ORB_STOPS = [[0, "#44E2FF", 1], [0.45, "#6A73FF", 1], [0.85, "#FF61FF", 1], [1, "#FF61FF", 0]];
-// Schnitte nach Pixelgröße: [Skalierung Zeichen, Strich vor der Skalierung, Kugelradius, Weichzeichnung]
-export const orbCut = (px) => (px <= 20 ? [1, 9, 29, 0] : px <= 40 ? [0.94, 8, 25, 3.5] : px <= 56 ? [0.88, 7.5, 25, 3.5] : [0.78, 7, 25, 3.5]);
-let orbN = 0;
-// tile: "round" (Kachel mit Ecken 14,2), "square" (randlos, z. B. apple-touch-icon), "none"; inner: Zeichen + Kugel zusätzlich verkleinern (maskable)
-export function orbInner({ px = 64, tile = "round", inner = 1, uid } = {}) {
-  const id = uid || "hso" + (++orbN);
-  const [sc, sw, r, blur] = orbCut(px);
-  const stops = ORB_STOPS.map(([o, c, a]) => `<stop offset="${o}" stop-color="${c}" stop-opacity="${a}"/>`).join("");
-  const defs = `<defs><radialGradient id="${id}g" cx="0.38" cy="0.36" r="0.7">${stops}</radialGradient>` +
-    (blur ? `<filter id="${id}f" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="${blur}"/></filter>` : "") + `</defs>`;
-  const bg = tile === "none" ? "" : `<rect width="64" height="64"${tile === "round" ? ' rx="14.2"' : ""} fill="${ORB_TILE}"/>`;
-  const ball = `<circle cx="32" cy="32" r="${r}" fill="url(#${id}g)"${blur ? ` filter="url(#${id}f)"` : ""}/>`;
-  const g = (x) => (inner !== 1 ? `<g transform="translate(32 32) scale(${inner}) translate(-32 -32)">${x}</g>` : x);
-  return { defs, bg, ball: g(ball), mark: (marks) => g(`<g transform="translate(32 32) scale(${sc}) translate(-32 -32)">${marks}</g>`), sw };
+// App-Icon „Silber“ (Runde 6, Variante D): dunkle Kachel mit diagonalem Verlauf, feine helle Innenkante, Zeichen im Silberverlauf
+export const iconCut = (px) => (px <= 20 ? [1, 9] : px <= 40 ? [0.94, 8] : px <= 56 ? [0.88, 7.5] : [0.78, 7]);
+let iconN = 0;
+// tile: "round" (Ecken 14,2), "square" (randlos, z. B. apple-touch-icon); edge: Innenkante 1 px; inner: Zeichen zusätzlich verkleinern (maskable)
+// marks(color, strokeWidth) liefert die Striche; ab 21 px bekommen sie den Silberverlauf über eine Maske (ein Verlauf über das ganze Zeichen)
+export function appIconInner({ px = 64, tile = "round", edge = true, inner = 1, uid, marks } = {}) {
+  const id = uid || "hsi" + (++iconN);
+  const [sc, sw] = iconCut(px);
+  const k = (64 / px).toFixed(4);
+  const tf = `translate(32 32) scale(${(sc * inner).toFixed(4)}) translate(-32 -32)`;
+  const small = px <= 20;
+  const defs = `<defs><linearGradient id="${id}t" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#3C3C42"/><stop offset="1" stop-color="#0B0B0D"/></linearGradient>` +
+    (small ? "" : `<linearGradient id="${id}s" x1="10" y1="8" x2="54" y2="56" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#8E8E96"/></linearGradient>` +
+      `<mask id="${id}m" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64"><g transform="${tf}">${marks("#FFFFFF", sw)}</g></mask>`) + `</defs>`;
+  const bg = `<rect width="64" height="64"${tile === "round" ? ' rx="14.2"' : ""} fill="url(#${id}t)"/>`;
+  const e = edge ? `<rect x="${(k / 2).toFixed(4)}" y="${(k / 2).toFixed(4)}" width="${(64 - k).toFixed(4)}" height="${(64 - k).toFixed(4)}" rx="${(14.2 - k / 2).toFixed(4)}" fill="none" stroke="#FFFFFF" stroke-opacity="0.12" stroke-width="${k}"/>` : "";
+  const mk = small ? `<g transform="${tf}">${marks("#E5E5EA", sw)}</g>` : `<rect width="64" height="64" fill="url(#${id}s)" mask="url(#${id}m)"/>`;
+  return defs + bg + e + mk;
 }
 
 const ANIM = `<style>
@@ -48,8 +49,7 @@ export function hansportSvg({ variant = "lockup", size = 28, color = "currentCol
   const a11y = `role="img" aria-label="${title}"`;
   const anim = animated ? ANIM : "";
   if (variant === "icon") {
-    const o = orbInner({ px: size });
-    return `<svg viewBox="0 0 64 64" width="${size}" height="${size}" ${a11y}>${anim}${o.defs}${o.bg}${o.ball}${o.mark(blende("#FFFFFF", o.sw, animated))}</svg>`;
+    return `<svg viewBox="0 0 64 64" width="${size}" height="${size}" ${a11y}>${anim}${appIconInner({ px: size, marks: (c, sw) => blende(c, sw, animated) })}</svg>`;
   }
   if (variant === "mark") {
     return `<svg viewBox="8 8 48 48" width="${size}" height="${size}" ${a11y}>${anim}${blende(color, 6, animated)}</svg>`;

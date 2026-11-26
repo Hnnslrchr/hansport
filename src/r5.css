@@ -348,7 +348,7 @@ html.intro-on, html.intro-on body { background: #000; }
 .intro.wait .mk:nth-child(4) path { animation-delay: .6s; }
 .intro.wait .mk:nth-child(5) path { animation-delay: .8s; }
 @keyframes intro-chase { 0% { opacity: 1; } 20% { opacity: .38; } 100% { opacity: .38; } }
-.about-orb { filter: drop-shadow(0 6px 18px rgba(0,0,0,.14)); }
+.about-icon { filter: drop-shadow(0 6px 18px rgba(0,0,0,.14)); }
 
 /* Listenzeilen je Sportart (Runde 6) */
 .cell.arow { min-height: 68px; align-items: center; gap: 12px; padding-top: 10px; padding-bottom: 10px; }

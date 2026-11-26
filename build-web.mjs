@@ -32,12 +32,12 @@ for (const f of r.outputFiles) { if (f.path.endsWith('.js')) js = f.text; else i
 
 const OUT = 'public';
 mkdirSync(OUT + '/icons', { recursive: true });
-// App-Icon „Orb“ (Runde 6), erzeugt mit tools/orb-icons.mjs; neue Dateinamen, damit der Service Worker keine alten Icons liefert
-const ORB = 'assets/orb';
-for (const [f, to] of [['orb-16.png', 'orb-16.png'], ['orb-32.png', 'orb-32.png'], ['orb-48.png', 'orb-48.png'], ['orb-64.png', 'orb-64.png'], ['apple-touch-icon.png', 'orb-touch-180.png'], ['icon-192.png', 'orb-192.png'], ['icon-512.png', 'orb-512.png'], ['icon-512-maskable.png', 'orb-512-maskable.png']]) cpSync(path.join(ORB, 'png', f), path.join(OUT, 'icons', to));
-cpSync(path.join(ORB, 'favicon.svg'), path.join(OUT, 'icons', 'orb.svg'));
-cpSync(path.join(ORB, 'favicon.ico'), path.join(OUT, 'favicon.ico'));
-const logoSvg = readFileSync(path.join(ORB, 'hansport-icon.svg'), 'utf8').replace(/<\?xml[^>]*>/, '').trim();
+// App-Icon „Silber“ (Runde 6), erzeugt mit tools/app-icons.mjs; eigene Dateinamen, damit der Service Worker keine alten Icons liefert
+const ICON = 'assets/icon';
+for (const [f, to] of [['silber-16.png', 'silber-16.png'], ['silber-32.png', 'silber-32.png'], ['silber-48.png', 'silber-48.png'], ['silber-64.png', 'silber-64.png'], ['apple-touch-icon.png', 'silber-touch-180.png'], ['icon-192.png', 'silber-192.png'], ['icon-512.png', 'silber-512.png'], ['icon-512-maskable.png', 'silber-512-maskable.png']]) cpSync(path.join(ICON, 'png', f), path.join(OUT, 'icons', to));
+cpSync(path.join(ICON, 'favicon.svg'), path.join(OUT, 'icons', 'silber.svg'));
+cpSync(path.join(ICON, 'favicon.ico'), path.join(OUT, 'favicon.ico'));
+const logoSvg = readFileSync(path.join(ICON, 'hansport-icon.svg'), 'utf8').replace(/<\?xml[^>]*>/, '').trim();
 
 // Kartendaten (offline): nur kopieren, wenn sich etwas geändert hat
 const copyDir = (from, to) => { if (!existsSync(from)) return 0; mkdirSync(to, { recursive: true }); let n = 0; for (const f of readdirSync(from)) { const a = path.join(from, f), b = path.join(to, f); if (statSync(a).isDirectory()) continue; if (!existsSync(b) || statSync(b).size !== statSync(a).size) { cpSync(a, b); n++; } } return n; };
@@ -57,10 +57,10 @@ const head = `<meta charset="utf-8">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="hansport">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="icon" type="image/svg+xml" href="/icons/orb.svg">
-<link rel="icon" type="image/png" sizes="32x32" href="/icons/orb-32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="/icons/orb-16.png">
-<link rel="apple-touch-icon" sizes="180x180" href="/icons/orb-touch-180.png">
+<link rel="icon" type="image/svg+xml" href="/icons/silber.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/silber-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/icons/silber-16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/icons/silber-touch-180.png">
 <link rel="manifest" href="/manifest.webmanifest">`;
 
 const html = `<!DOCTYPE html>
@@ -139,10 +139,10 @@ writeFileSync(OUT + '/manifest.webmanifest', JSON.stringify({
   name: 'hansport', short_name: 'hansport', description: 'Training, Gesundheit und Coach – privat.', lang: 'de', id: '/', start_url: '/', scope: '/',
   display: 'standalone', orientation: 'portrait', background_color: '#000000', theme_color: '#000000',
   icons: [
-    { src: '/icons/orb-192.png', sizes: '192x192', type: 'image/png' },
-    { src: '/icons/orb-512.png', sizes: '512x512', type: 'image/png' },
-    { src: '/icons/orb-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-    { src: '/icons/orb.svg', sizes: 'any', type: 'image/svg+xml' },
+    { src: '/icons/silber-192.png', sizes: '192x192', type: 'image/png' },
+    { src: '/icons/silber-512.png', sizes: '512x512', type: 'image/png' },
+    { src: '/icons/silber-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    { src: '/icons/silber.svg', sizes: 'any', type: 'image/svg+xml' },
   ],
 }, null, 1));
 

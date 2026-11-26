@@ -2,7 +2,7 @@
 // 0–550 ms Striche drehen sich aus −100° / 0,3 in ihre Lage (kritisch gedämpfte Feder), ab 450 ms öffnet sich
 // „Heute“ als Kreis aus der Mitte, ab 550 ms wächst die Kachel auf 1,8× und blendet aus. Dauert das Laden länger,
 // leuchten die Striche nacheinander auf. Tippen überspringt. „Bewegung reduzieren“: 0,4 s Überblenden.
-import { orbInner } from './hansport-logo.js';
+import { appIconInner } from './hansport-logo.js';
 import { setValue, springTo, stop, reducedMotion } from './spring.js';
 
 const KEY = 'hs.seen';
@@ -20,9 +20,8 @@ function trackSeen() {
 }
 
 function iconSvg() {
-  const o = orbInner({ px: 96, uid: 'hsi' });
-  const marks = [0, 72, 144, 216, 288].map((r) => `<g class="mk"><path d="M22 15L43 19" transform="rotate(${r} 32 32)" fill="none" stroke="#FFFFFF" stroke-width="${o.sw}" stroke-linecap="round"/></g>`).join('');
-  return `<svg viewBox="0 0 64 64" width="96" height="96" aria-hidden="true">${o.defs}${o.bg}${o.ball}${o.mark(marks)}</svg>`;
+  const marks = (c, sw) => [0, 72, 144, 216, 288].map((r) => `<g class="mk"><path d="M22 15L43 19" transform="rotate(${r} 32 32)" fill="none" stroke="${c}" stroke-width="${sw}" stroke-linecap="round"/></g>`).join('');
+  return `<svg viewBox="0 0 64 64" width="96" height="96" aria-hidden="true">${appIconInner({ px: 96, uid: 'hsi', marks })}</svg>`;
 }
 
 export function startIntro(ready) {

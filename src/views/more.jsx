@@ -541,7 +541,7 @@ export function Guide() {
     <div class="view">
       <Top title="Über hansport" />
       <div class="about">
-        <HansportLogo variant="icon" size={72} title="hansport App-Icon" class="about-orb" />
+        <HansportLogo variant="icon" size={72} title="hansport App-Icon" class="about-icon" />
         <HansportLogo size={28} title="hansport" style={{ marginTop: 'var(--s-4)' }} />
         <div class="small muted" style="margin-top:var(--s-3)">Version {APP_VERSION}</div>
       </div>
