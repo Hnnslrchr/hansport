@@ -5,7 +5,7 @@ import { computeSections, pauseIntervals } from './sections.js';
 import { toGrid, gradeModel } from './grade.js';
 import { dsport } from './sports.js';
 
-export const SUM_V = 3;
+export const SUM_V = 4;
 const R = (v, k = 0) => (v == null || !isFinite(v) ? null : Math.round(v * 10 ** k) / 10 ** k);
 const hav = (p, q) => {
   const rad = Math.PI / 180, dLat = (q[0] - p[0]) * rad, dLng = (q[1] - p[1]) * rad;
@@ -84,13 +84,27 @@ export function actSummary(a, s, { sections, full = false } = {}) {
     for (const x of secs) if (x.type === 'ascent' || x.type === 'walkup') { gain += x.gain; t += x.mov; }
     if (t > 300) out.up = { h: R(gain), t: R(t), rate: R((gain / t) * 3600) };
   }
-  if ((sp === 'road' || sp === 'mtb' || sp === 'hike' || sp === 'other') && s.alt && s.d) {
+  if ((sp === 'road' || sp === 'mtb' || sp === 'hike' || sp === 'other' || sp === 'splitboard') && s.alt && s.d) {
     try {
       const gm = gradeModel(toGrid({ d: s.d, alt: s.alt, t: s.t }, 20));
       if (gm) {
-        out.maxG = gm.steep ? R(gm.steep.g, 1) : null;
-        const c = gm.climbs.slice().sort((x, y) => y.gain - x.gain)[0];
-        if (c) out.climb = { d0: R(c.d0), d1: R(c.d1), len: R(c.len), gain: R(c.gain), avg: R(c.avg, 1), vam: R(c.vam) };
+        if (sp !== 'splitboard') {
+          out.maxG = gm.steep ? R(gm.steep.g, 1) : null;
+          const c = gm.climbs.slice().sort((x, y) => y.gain - x.gain)[0];
+          if (c) out.climb = { d0: R(c.d0), d1: R(c.d1), len: R(c.len), gain: R(c.gain), avg: R(c.avg, 1), vam: R(c.vam) };
+        }
+        // Alle nennenswerten Anstiege mit Start- und Gipfelpunkt – daraus baut die App die
+        // wiederkehrenden Anstiege über alle Aufzeichnungen hinweg (ohne Strava-Segmente).
+        if (s.ll && s.ll.length) {
+          const at = (dist) => { let lo = 0, hi = s.d.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (s.d[m] < dist) lo = m + 1; else hi = m; } return lo; };
+          const P = (i) => { const p = s.ll[i]; return p ? [Math.round(p[0] * 1e5) / 1e5, Math.round(p[1] * 1e5) / 1e5] : null; };
+          const cl = gm.climbs
+            .filter((x) => x.gain >= 50 && x.len >= 400)
+            .sort((x, y) => y.gain - x.gain).slice(0, 8)
+            .map((x) => ({ d: R(x.len), g: R(x.gain), avg: R(x.avg, 1), t: R(x.time), vam: R(x.vam), alt: R(x.a1), a: P(at(x.d0)), b: P(at(x.d1)) }))
+            .filter((x) => x.a && x.b);
+          if (cl.length) out.cl = cl;
+        }
       }
     } catch (e) { /* keine Steigungen */ }
   }

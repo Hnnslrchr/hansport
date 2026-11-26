@@ -290,3 +290,46 @@ export function Bullet({ start, value, goal, fmt = (v) => num(v, 1), unit = 'kg'
     </div>
   );
 }
+
+const last0 = (pts) => pts[pts.length - 1];
+
+// ---------- Seltene Messwerte (VO2max): Treppenlinie, die den Wert bis zur nächsten Messung hält ----------
+export function StepLine({ pts, fmt = (v) => num(v, 0), label, fromLabel, best }) {
+  const ref = useRef();
+  const W = useWidth(ref);
+  const H = 104, B = 14, Rr = 30;
+  if (!pts.length) return <div class="cc" ref={ref}><div class="cc-none">keine Messungen</div></div>;
+  const vals = pts.map((p) => p.v);
+  const lo0 = Math.min(...vals), hi0 = Math.max(...vals);
+  const pad = Math.max((hi0 - lo0) * 0.4, 0.8);
+  const lo = lo0 - pad, hi = hi0 + pad;
+  const t0 = pts[0].t, t1 = Math.max(pts[pts.length - 1].t, t0 + 1);
+  const x = (t) => ((t - t0) / (t1 - t0)) * (W - Rr);
+  const y = (v) => B + (1 - (v - lo) / (hi - lo || 1)) * (H - B * 2);
+  let dd = '';
+  pts.forEach((p, i) => {
+    const xx = x(p.t), yy = y(p.v);
+    if (!i) dd += `M${xx.toFixed(1)},${yy.toFixed(1)}`;
+    else dd += `L${xx.toFixed(1)},${y(pts[i - 1].v).toFixed(1)}L${xx.toFixed(1)},${yy.toFixed(1)}`;
+  });
+  dd += `L${(W - Rr).toFixed(1)},${y(pts[pts.length - 1].v).toFixed(1)}`;
+  const last = pts[pts.length - 1];
+  let bi = best ? pts.reduce((b, p, i) => (p.v > pts[b].v ? i : b), 0) : -1;
+  // Bestwert nur beschriften, wenn er wirklich heraussticht und nicht am Rand klebt
+  if (bi >= 0 && (bi === 0 || bi === pts.length - 1 || pts[bi].v <= last0(pts).v + 0.4)) bi = -1;
+  return (
+    <div class="cc" ref={ref}>
+      {W ? (
+        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
+          <text x={W} y={y(hi0) + 4} text-anchor="end" class="cc-t">{fmt(hi0)}</text>
+          {hi0 !== lo0 ? <text x={W} y={y(lo0) + 4} text-anchor="end" class="cc-t">{fmt(lo0)}</text> : null}
+          <path d={dd} class="cc-line" />
+          {pts.map((p, i) => (i === pts.length - 1 ? null : <circle cx={x(p.t)} cy={y(p.v)} r="2.6" class="cc-dot" />))}
+          {bi >= 0 ? <text x={x(pts[bi].t)} y={y(pts[bi].v) - 9} text-anchor="middle" class="cc-t">Bestwert</text> : null}
+          <circle cx={x(last.t)} cy={y(last.v)} r="4.5" class="cc-last" />
+        </svg>
+      ) : null}
+      <div class="cc-ax two" aria-hidden="true"><span>{fromLabel}</span><span class="on">heute</span></div>
+    </div>
+  );
+}

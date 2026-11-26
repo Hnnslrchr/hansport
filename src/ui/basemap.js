@@ -184,7 +184,7 @@ function parse(raw, z, x, y) {
     labels.push({ kind, cls: p.class, rank: +p.rank || 0, name: nm, ele: p.ele != null ? Math.round(+p.ele) : null, wx: (x + pt.x / extent) / s, wy: (y + pt.y / extent) / s });
   };
   each('place', (f) => lab('place', f));
-  each('mountain_peak', (f) => { if (f.properties.class !== 'saddle') lab('peak', f); });
+  each('mountain_peak', (f) => lab(f.properties.class === 'saddle' ? 'saddle' : 'peak', f));
   each('water_name', (f) => lab('water', f));
   return { groups, labels, extent };
 }
@@ -350,6 +350,7 @@ export function collectLabels(dataKeys, z) {
     const t = tiles.get(k); if (!t || t.state !== 'ready') continue;
     for (const l of t.labels) {
       let prio;
+      if (l.kind === 'saddle') continue; // nur für die Suche nach Namen, nicht auf der Karte
       if (l.kind === 'place') { const m = PLACE_MIN[l.cls]; if (m == null || z < m) continue; prio = PLACE_PRIO[l.cls] + (l.rank || 0) * 0.01; }
       else if (l.kind === 'peak') { if (z < 11 || (z < 12.5 && l.rank > 2) || (z < 13.5 && l.rank > 6)) continue; prio = 4 + (l.rank || 0) * 0.05; }
       else { if (z < 10) continue; prio = 2.5; }
@@ -446,7 +447,9 @@ export function drawBase(ctx, view, W, H, dpr, opts = {}) {
 }
 
 // Gipfel aus den Offline-Kartendaten im Umkreis eines Punkts (Meter); nächster zuerst. Ohne Kartendaten: []
-export function peaksNear(lat, lng, radius = 150, timeout = 6000) {
+export const peaksNear = (lat, lng, radius = 150, timeout = 6000) => labelsNear(lat, lng, radius, ['peak'], timeout);
+// Namen aus der Offline-Karte in der Nähe eines Punktes: Gipfel, Joch/Sattel oder Ort
+export function labelsNear(lat, lng, radius = 150, kinds = ['peak'], timeout = 6000) {
   const wx = (lng + 180) / 360;
   const s0 = Math.sin((Math.max(-85, Math.min(85, lat)) * Math.PI) / 180);
   const wy = 0.5 - Math.log((1 + s0) / (1 - s0)) / (4 * Math.PI);
@@ -471,9 +474,9 @@ export function peaksNear(lat, lng, radius = 150, timeout = 6000) {
         if (!t) continue;
         if (t.state === 'loading') return null;
         for (const l of t.labels || []) {
-          if (l.kind !== 'peak') continue;
+          if (!kinds.includes(l.kind)) continue;
           const dist = Math.hypot(l.wx - wx, l.wy - wy) * mPerUnit;
-          if (dist <= radius) out.push({ name: l.name, ele: l.ele, dist: Math.round(dist) });
+          if (dist <= radius) out.push({ name: l.name, ele: l.ele, kind: l.kind, cls: l.cls, dist: Math.round(dist) });
         }
       }
       const seen = new Set();

@@ -118,7 +118,7 @@ function BreakSheet({ b }) {
   return (
     <Sheet title={b ? 'Pause bearbeiten' : 'Pause oder Umstand'}>
       <div class="field"><label for="b-kind">Art</label><select id="b-kind" class="input" value={f.kind} onChange={(e) => set('kind', e.target.value)}>{BREAK_KINDS.map((k) => <option>{k}</option>)}</select></div>
-      <div class="row"><div class="field grow"><label for="b-from">Von</label><input id="b-from" class="input" type="date" value={f.from} onInput={(e) => set('from', e.target.value)} /></div><div class="field grow"><label for="b-to">Bis</label><input id="b-to" class="input" type="date" value={f.to} onInput={(e) => set('to', e.target.value)} /></div></div>
+      <div class="formrow two"><div class="field"><label for="b-from">Von</label><input id="b-from" class="input date" type="date" value={f.from} onInput={(e) => set('from', e.target.value)} /></div><div class="field"><label for="b-to">Bis</label><input id="b-to" class="input date" type="date" value={f.to} onInput={(e) => set('to', e.target.value)} /></div></div>
       <div class="field"><label for="b-note">Notiz</label><input id="b-note" class="input" value={f.note} onInput={(e) => set('note', e.target.value)} /></div>
       <button type="button" class="btn wide" onClick={() => { const id = (b && b.id) || newId('b'); setDoc('breaks/' + id, { ...f, id, to: f.to < f.from ? f.from : f.to }); closeSheet(); }}>Speichern</button>
       {b ? <button type="button" class="btn sec2 wide" onClick={() => { delDoc('breaks/' + b.id); closeSheet(); }}>Löschen</button> : null}

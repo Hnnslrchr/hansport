@@ -1,13 +1,15 @@
 import { h, Fragment } from 'preact';
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { GoalRow } from './overview.jsx';
 import { useData, ActRow, RouteShape } from './common.jsx';
 import { Top, Section, Icon, Seg, Chips, Mark, Cell, Sheet, Stepper, Scale, Note, sportColor } from '../ui/kit.jsx';
 import { push, openSheet, closeSheet } from '../nav.js';
 import { getState, setDoc, newId, toast } from '../store.js';
 import { SPORT_ORDER, SPORTS, sportLabel, dsport, sportIcon } from '../sports.js';
-import { aggregate, recurringSegments, routeMetric, median } from '../analysis.js';
-import { hours, km, hm, int, num, monthName, dateMid, dateShort, clock, dur, today } from '../format.js';
+import { aggregate, recurringSegments, recurringClimbs, splitCompare, routeMetric, median } from '../analysis.js';
+import { climbCandidates, climbProgress, scanClimbs } from '../climbs.js';
+import { labelsNear } from '../ui/basemap.js';
+import { hours, km, hm, int, num, monthName, dateMid, dateShort, clock, dur, today, NB } from '../format.js';
 import { ACT_SRC } from '../env.js';
 
 export function Activities({ sport: initSport, range, label, tab: initTab }) {
@@ -142,23 +144,115 @@ function RouteList({ d }) {
   );
 }
 
+// Wiederkehrende Anstiege: ohne Strava kommen sie aus den eigenen Aufzeichnungen.
+const climbNames = new Map();
+function useClimbName(g) {
+  const [n, setN] = useState(() => climbNames.get(g.id));
+  useEffect(() => {
+    if (n !== undefined) return;
+    let alive = true;
+    // Name aus der Offline-Karte: Gipfel oder Joch am Ende des Anstiegs, sonst der nächste Ort
+    labelsNear(g.b[0], g.b[1], 2500, ['peak', 'saddle', 'place']).then((ls) => {
+      const top = ls.find((l) => (l.kind === 'peak' || l.kind === 'saddle') && l.dist <= 800);
+      const place = ls.filter((l) => l.kind === 'place').sort((x, y) => x.dist - y.dist)[0];
+      const nm = top ? top.name : place ? 'nach ' + place.name : '';
+      climbNames.set(g.id, nm);
+      if (alive) setN(nm);
+    }).catch(() => { climbNames.set(g.id, ''); if (alive) setN(''); });
+    return () => { alive = false; };
+  }, [g.id]);
+  return n || '';
+}
+const climbTitle = (g, name) => (name ? name.replace(/^nach /, 'Anstieg nach ') : km(g.dist) + NB + 'km · ' + hm(g.gain) + NB + 'Hm');
+
+function ClimbRow({ g }) {
+  const name = useClimbName(g);
+  return (
+    <Cell onClick={() => openSheet(() => <ClimbSheet g={g} name={name} />, 'Anstieg')}
+      left={<span class="pill" style="width:44px;justify-content:center">{num(g.grade * 100, 0)}{NB}%</span>}
+      title={climbTitle(g, name)}
+      sub={g.n + '× · ' + km(g.dist) + NB + 'km · ' + hm(g.gain) + NB + 'Hm'}
+      right={<Fragment><b>{g.best && g.best.mt ? clock(g.best.mt) : '–'}</b><div class="faint tiny">{g.median ? 'Median ' + clock(g.median) : ''}</div></Fragment>} />
+  );
+}
+
+function ClimbSheet({ g, name }) {
+  const cmp = splitCompare(g.efforts.filter((e) => e.mt > 0), (e) => e.mt);
+  const efforts = g.efforts.slice().reverse();
+  return (
+    <Sheet title={climbTitle(g, name)}>
+      <div class="pad">
+        <div class="stats three">
+          <div class="stat"><div class="v">{km(g.dist)}<small>km</small></div><div class="l">Länge</div></div>
+          <div class="stat"><div class="v">{hm(g.gain)}<small>Hm</small></div><div class="l">Aufstieg</div></div>
+          <div class="stat"><div class="v">{num(g.grade * 100, 1)}<small>%</small></div><div class="l">Ø Steigung</div></div>
+        </div>
+        <div class="small muted" style="margin-top:10px">
+          {g.n}× aufgezeichnet{g.best && g.best.mt ? ', beste Zeit ' + clock(g.best.mt) + ' (' + dateShort(g.best.date) + ')' : ''}{g.median ? ', Median ' + clock(g.median) : ''}.
+          {cmp ? ' Die letzten ' + cmp.k + ' gegen die ' + cmp.k + ' davor: ' + (Math.abs(cmp.diff) < 15 ? 'gleich schnell' : (cmp.diff < 0 ? clock(Math.abs(cmp.diff)) + ' schneller' : clock(Math.abs(cmp.diff)) + ' langsamer')) + '.' : ''}
+        </div>
+        <div class="list" style="margin-top:12px">
+          {efforts.map((e) => (
+            <Cell onClick={() => { closeSheet(); push('activity', { id: e.act }); }}
+              title={e.mt > 0 ? clock(e.mt) : 'keine Zeit'}
+              sub={dateShort(e.date) + (e.vam ? ' · ' + int(e.vam) + NB + 'Hm/h' : '')}
+              right={e === g.best ? <span class="pill">beste</span> : null} />
+          ))}
+        </div>
+        <div class="tiny faint" style="margin-top:12px">Aus deinen eigenen Aufzeichnungen erkannt: Anstiege ab 50 Hm und 400 m. Als derselbe Anstieg gilt, was mit höchstens 250 m Abstand an Start und Gipfel und ähnlicher Länge wieder vorkommt. Gefahrene Zeit ohne Pausen.</div>
+      </div>
+    </Sheet>
+  );
+}
+
 function ClimbList({ d }) {
-  const segs = recurringSegments(d.segIdx, 3);
-  const marks = ((getState().routes.main || {}).marks || []);
   const S = getState();
-  const analyzed = Object.keys(S.perf).length;
-  const gps = d.list.filter((a) => a.src === 'strava' && !a.indoor && a.hasGps && ['road', 'mtb', 'hike', 'splitboard'].includes(a.sport)).length;
+  const segs = recurringSegments(d.segIdx, 3);
+  const marks = ((S.routes.main || {}).marks || []);
+  const groups = useMemo(() => recurringClimbs(d.climbIdx || [], 3), [d.v, d.climbIdx]);
+  const near = useMemo(() => recurringClimbs(d.climbIdx || [], 2).filter((g) => g.n === 2), [d.v, d.climbIdx]);
+  const prog = climbProgress(d.list);
+  const [busy, setBusy] = useState(false);
+  const [run, setRun] = useState(null);
+  const stop = useRef(false);
+  const start = async () => {
+    stop.current = false;
+    setBusy(true);
+    setRun({ done: 0, total: prog.rest.length });
+    try { await scanClimbs(prog.rest, { onProgress: setRun, shouldStop: () => stop.current }); } catch (e) { toast('Auswertung abgebrochen'); }
+    setBusy(false);
+    setRun(null);
+  };
+  const left = prog.total - prog.done;
   return (
     <Fragment>
-      <div class="subhead">Anstiege und Abschnitte, die du mindestens dreimal gefahren oder gegangen bist (Strava-Segmente), dazu deine eigenen markierten Teilstrecken.</div>
-      {analyzed < gps ? <div style="margin-bottom:10px"><Note>Segmentdaten liegen für {analyzed} von {gps} GPS-Aktivitäten vor. Weitere werden nach jedem Abgleich im Hintergrund geladen.</Note></div> : null}
+      <div class="subhead">Anstiege, die du mindestens dreimal gefahren oder gegangen bist – aus deinen eigenen Aufzeichnungen erkannt, dazu deine markierten Teilstrecken.</div>
       {marks.length ? (
         <Section title="Eigene Teilstrecken">
           <div class="list">{marks.map((m) => <Cell onClick={() => push('mark', { id: m.id })} left={<Mark sport={m.sport || 'mtb'} sm />} title={m.name} sub={(m.kind === 'trail' ? 'Trail / Abfahrt' : 'Anstieg') + ' · ' + Object.keys(m.results || {}).length + ' Zeiten'} />)}</div>
         </Section>
       ) : null}
-      <Section title="Strava-Segmente">
-        {segs.length ? (
+      <Section title="Anstiege aus deinen Fahrten">
+        {groups.length ? <div class="list">{groups.slice(0, 60).map((g) => <ClimbRow g={g} />)}</div> : null}
+        {!groups.length && !left ? <div class="empty">Noch kein Anstieg dreimal aufgezeichnet.{near.length ? ' ' + near.length + ' ' + (near.length === 1 ? 'Anstieg wurde' : 'Anstiege wurden') + ' bisher zweimal gefahren.' : ''}</div> : null}
+        {left ? (
+          <div class="card p stack" style="gap:10px;margin-top:10px">
+            <div class="small">{prog.done ? prog.done + ' von ' + prog.total + ' Aufzeichnungen ausgewertet.' : 'Noch nichts ausgewertet.'} Für die restlichen {left} lädt die App die Höhen- und Streckendaten und sucht darin die Anstiege.</div>
+            {busy && run ? (
+              <Fragment>
+                <div class="gbar"><div class="tr"><div class="fl" style={{ width: Math.round(((run.done || 0) / Math.max(1, run.total)) * 100) + '%' }} /></div></div>
+                <div class="small muted">{run.done} von {run.total} · {run.found || 0} Anstiege gefunden{run.failed ? ' · ' + run.failed + ' ohne Daten' : ''}</div>
+                <button type="button" class="btn sec2" onClick={() => { stop.current = true; }}>Anhalten</button>
+              </Fragment>
+            ) : (
+              <button type="button" class="btn" onClick={start}>Aufzeichnungen auswerten</button>
+            )}
+            <div class="tiny faint">Läuft nur, solange diese Seite offen ist. Zwischenstände bleiben gespeichert, du kannst jederzeit anhalten und später weitermachen.</div>
+          </div>
+        ) : null}
+      </Section>
+      {segs.length ? (
+        <Section title="Strava-Segmente">
           <div class="list">
             {segs.slice(0, 80).map((s) => (
               <Cell onClick={() => push('segment', { id: s.id })} left={<span class="pill" style="width:44px;justify-content:center">{s.kind === 'climb' ? num(s.grade * 100, 0) + ' %' : s.kind === 'descent' ? '↘' : '→'}</span>}
@@ -167,8 +261,8 @@ function ClimbList({ d }) {
                 right={<Fragment><b>{clock(s.best.mt)}</b><div class="faint tiny">Median {clock(s.median)}</div></Fragment>} />
             ))}
           </div>
-        ) : <div class="empty">Noch keine wiederkehrenden Segmente gefunden.</div>}
-      </Section>
+        </Section>
+      ) : null}
     </Fragment>
   );
 }

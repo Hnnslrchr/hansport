@@ -206,9 +206,9 @@ export function GearItem({ id }) {
             </div>
           )) : <div class="small muted">Noch keine Einträge.</div>}
           <Seg value={kind} onChange={setKind} label="Art" options={LOG_KINDS} />
-          <div class="row" style="gap:8px">
-            <div class="field" style="flex:0 0 auto"><label for="lg-d">Datum</label><input id="lg-d" class="input" type="date" value={ldate} max={today()} onInput={(e) => setLdate(e.target.value || today())} /></div>
-            <div class="field grow"><label for="lg-t">Was wurde gemacht?</label><input id="lg-t" class="input" value={note} onInput={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} placeholder="z. B. Kette gewechselt" /></div>
+          <div class="formrow">
+            <div class="field"><label for="lg-d">Datum</label><input id="lg-d" class="input date" type="date" value={ldate} max={today()} onInput={(e) => setLdate(e.target.value || today())} /></div>
+            <div class="field"><label for="lg-t">Was wurde gemacht?</label><input id="lg-t" class="input" value={note} onInput={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} placeholder="z. B. Kette gewechselt" /></div>
           </div>
           <div class="tiny faint">Kilometerstand am {dateMid(ldate)}: {km(odometerAt(d.list, id, g, ldate))}{NB}km, wird automatisch eingetragen.</div>
           <button type="button" class="btn" disabled={!note.trim()} onClick={add}>Hinzufügen</button>
@@ -535,7 +535,7 @@ export function ShareMap() {
 }
 
 // ---------- Kurzanleitung ----------
-export const APP_VERSION = 'Runde 9 · 26. Nov. 2026';
+export const APP_VERSION = 'Runde 10 · 26. Nov. 2026';
 export function Guide() {
   return (
     <div class="view">

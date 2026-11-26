@@ -364,3 +364,13 @@ details.data td:first-child, details.data th:first-child { text-align: left; }
 .table.nw td { white-space: nowrap; }
 .table.nw td:first-child { white-space: normal; }
 a.btn { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+
+/* Formularzeile: Datum neben Text, auf schmalen Geräten untereinander.
+   input[type=date] bringt in Safari eine eigene Mindestbreite mit und drückt sonst das
+   Nachbarfeld aus der Zeile. */
+.formrow { display: grid; grid-template-columns: minmax(142px, 44%) minmax(0, 1fr); gap: 10px; align-items: end; }
+.formrow .field { min-width: 0; }
+.formrow .input { min-width: 0; }
+.input.date { -webkit-appearance: none; appearance: none; text-align: left; font-variant-numeric: tabular-nums; }
+.formrow.two { grid-template-columns: 1fr 1fr; }
+@media (max-width: 392px) { .formrow { grid-template-columns: 1fr; } .formrow.two { grid-template-columns: 1fr 1fr; } }

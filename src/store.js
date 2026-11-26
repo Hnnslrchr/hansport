@@ -5,7 +5,7 @@ import { autoGear } from './gear.js';
 import { caps, kvGet, kvSet, isTransient } from './platform.js';
 import { mapSport } from './sports.js';
 import { clusterRoutes } from './routes.js';
-import { segmentIndex } from './analysis.js';
+import { segmentIndex, climbIndex } from './analysis.js';
 
 export const COLLS = ['acts', 'edits', 'manual', 'gym', 'gymtpl', 'journal', 'breaks', 'gear', 'goals', 'routes', 'reviews', 'settings', 'meta', 'perf', 'strength', 'health'];
 
@@ -237,12 +237,13 @@ export function derived() {
   const rmain = st.routes.main || {};
   const { clusters, byAct } = clusterRoutes(list, rmain.overrides || {}, rmain.names || {});
   const segIdx = segmentIndex(st.perf, byId);
+  const climbIdx = climbIndex(st.perf, byId);
   const journal = {};
   for (const ch of Object.values(st.journal)) Object.assign(journal, ch.days || {});
   const gearNames = {};
   for (const b of gearMeta.bikes || []) gearNames[b.id] = b.name;
   for (const g of Object.values(st.gear)) gearNames[g.id] = g.name;
-  dCache = { v: version, list, byId, clusters, byAct, segIdx, journal, gymSessions, gearNames, dups };
+  dCache = { v: version, list, byId, clusters, byAct, segIdx, climbIdx, journal, gymSessions, gearNames, dups };
   return dCache;
 }
 

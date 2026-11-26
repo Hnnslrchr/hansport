@@ -4,14 +4,14 @@ import { h, Fragment } from 'preact';
 import { useMemo } from 'preact/hooks';
 import { Ico } from '../ui/hp.jsx';
 import { DevBar } from '../ui/r5.jsx';
-import { StageBars, BandLine, RangeBars, ShareBars, GoalCols, PmcChart, WeightChart, Bullet } from '../ui/ck-charts.jsx';
+import { StageBars, BandLine, RangeBars, ShareBars, GoalCols, PmcChart, WeightChart, StepLine, Bullet } from '../ui/ck-charts.jsx';
 import { push } from '../nav.js';
 import { M, latest, series } from '../metrics.js';
 import { addDays } from '../analysis.js';
 import { loadRatio } from '../coach-logic.js';
 import { hmm } from '../viz-data.js';
 import { km, hm as hmFmt, int, num, dayMon, NB } from '../format.js';
-import { n0, n1, sgn0, durHM, durU, minClock, mean, trendOf, healthView, nightsOf, bbRange, stressShare, colsOf, avgOf, weightInfo } from './ck-data.js';
+import { n0, n1, sgn0, durHM, durU, minClock, mean, trendOf, healthView, nightsOf, bbRange, stressShare, colsOf, avgOf, weightInfo, vo2Series } from './ck-data.js';
 
 const WD = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const FCOL = { hrv: 'var(--c-erh)', sleep: 'var(--c-sch)', rhr: 'var(--c-herz)', load: 'var(--c-akt)', bb: 'var(--c2-erh)' };
@@ -101,6 +101,7 @@ function BedDots({ items, target }) {
 // Kopf: Name und Einordnung. Darunter der Wert und die Veränderung zum Schnitt der letzten
 // 28 Tage – so steht die Entwicklung neben der Zahl. Dann das Diagramm, dann die beiden Mittel.
 export function HealthRow({ x, day, H }) {
+  if (x.k === 'vo2') return <Vo2Row x={x} day={day} H={H} />;
   // Beim Schlaf ist die Dauer die Kernzahl; der Score steht als Einordnung daneben
   if (x.k === 'slScore' && x.r && (x.r.slMin != null || (x.r.sl && x.r.sl.total != null))) {
     const tot = x.r.sl && x.r.sl.total != null ? x.r.sl.total : x.r.slMin;
@@ -131,6 +132,28 @@ export function HealthRow({ x, day, H }) {
       </span>
       {chart}
       <span class="ck-hf">{avg7 != null ? <span>Ø 7 Tage {f(avg7)}{v.unit ? NB + v.unit : ''}</span> : null}{t.avg != null ? <span>Ø 28 Tage {f(t.avg)}{v.unit ? NB + v.unit : ''}</span> : null}</span>
+    </button>
+  );
+}
+
+// VO2max ändert sich selten: Treppenlinie über ein halbes Jahr statt Punkte ohne Verbindung,
+// dazu die Veränderung seit der ersten Messung im Fenster und der Bestwert.
+function Vo2Row({ x, day, H }) {
+  const pts = useMemo(() => vo2Series(H, day, 180), [H, day]);
+  const first = pts.length ? pts[0] : null;
+  const d = first && pts.length > 1 ? x.v - first.v : null;
+  const best = pts.length ? pts.reduce((b, p) => (p.v > b.v ? p : b), pts[0]) : null;
+  const age = Math.round((new Date(day + 'T12:00:00') - new Date(x.date + 'T12:00:00')) / 864e5);
+  return (
+    <button type="button" class="ck-hrow glow g-herz" onClick={() => push('metric', { k: 'vo2' })}
+      aria-label={'VO2max ' + n0(x.v) + (d ? ', ' + (d > 0 ? 'plus ' : 'minus ') + n0(Math.abs(d)) + ' seit ' + dayMon(first.date) : '') + ', Details'}>
+      <span class="ck-hh"><Ico n="graph-up" />VO2max<span class="st">{age > 30 ? dayMon(x.date) : 'Garmin-Schätzung'}</span></span>
+      <span class="ck-hv">
+        <b>{n0(x.v)}<small>ml/kg/min</small></b>
+        {d == null || Math.abs(d) < 0.5 ? <span class="d">{pts.length > 1 ? 'unverändert seit ' + dayMon(first.date) : ''}</span> : <span class="d"><i class={d > 0 ? 'up' : 'dn'} />{n0(Math.abs(d))} seit {dayMon(first.date)}</span>}
+      </span>
+      <StepLine pts={pts} fromLabel={first ? dayMon(first.date) : ''} best label={'VO2max seit ' + (first ? dayMon(first.date) : '') + ', zuletzt ' + n0(x.v)} />
+      <span class="ck-hf">{best ? <span>Bestwert {n0(best.v)} · {dayMon(best.date)}</span> : null}{pts.length ? <span>{pts.length} {pts.length === 1 ? 'Messung' : 'Messungen'}</span> : null}</span>
     </button>
   );
 }

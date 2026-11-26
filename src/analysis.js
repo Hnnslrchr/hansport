@@ -1,6 +1,7 @@
 // Auswertungen: Zeiträume, Trends, Erkenntnisse, Zonen, Bestwerte, Gym, Rückblicke, Zusammenhänge.
 import { parseDate, isoDate, today, dur, hours, km, hm, num, int, clock, signedDur, monthName, dateMid, pct } from './format.js';
 import { SPORT_ORDER, SPORTS, sportLabel, dsport } from './sports.js';
+import { hav } from './geo.js';
 
 export const median = (arr) => {
   const a = arr.filter((x) => x != null && !isNaN(x)).sort((x, y) => x - y);
@@ -136,6 +137,48 @@ export function segmentIndex(perfs, actsById) {
   }
   return idx;
 }
+
+// ---------- Eigene Anstiege: wiederkehrende Anstiege aus den eigenen Aufzeichnungen ----------
+// Grundlage sind die je Aktivität erkannten Anstiege (perf/<id>.sum.cl) mit Start- und Gipfelpunkt.
+// Zwei Anstiege gelten als derselbe, wenn Start und Gipfel je höchstens 250 m auseinanderliegen
+// und die Länge um höchstens 30 % abweicht. Keine Strava-Daten nötig.
+export function climbIndex(perfs, actsById) {
+  const items = [];
+  for (const [aid, p] of Object.entries(perfs || {})) {
+    const a = actsById[aid];
+    if (!a || a.excluded) continue;
+    const cl = p && p.sum && p.sum.cl;
+    if (!cl) continue;
+    for (const c of cl) if (c.a && c.b) items.push({ ...c, act: aid, date: a.date, start: a.start, sport: a.sport, gear: a.gear, ebike: a.ebike, name: a.name });
+  }
+  items.sort((x, y) => y.g - x.g);
+  const groups = [];
+  for (const it of items) {
+    let G = null;
+    for (const g of groups) {
+      if (hav(g.a, it.a) > 250 || hav(g.b, it.b) > 250) continue;
+      if (Math.abs(g.dist - it.d) / Math.max(1, g.dist) > 0.3) continue;
+      G = g; break;
+    }
+    if (!G) { G = { a: it.a, b: it.b, dist: it.d, gain: it.g, avg: it.avg, alt: it.alt, sport: it.sport, efforts: [] }; groups.push(G); }
+    if (G.efforts.some((e) => e.act === it.act)) continue;
+    G.efforts.push({ act: it.act, date: it.date, start: it.start, mt: it.t, vam: it.vam, dist: it.d, gain: it.g, gear: it.gear, ebike: it.ebike, sport: it.sport, name: it.name });
+  }
+  for (const G of groups) {
+    G.efforts.sort((x, y) => ((x.start || x.date) < (y.start || y.date) ? -1 : 1));
+    G.n = G.efforts.length;
+    const times = G.efforts.map((e) => e.mt).filter((t) => t > 0);
+    G.best = G.efforts.reduce((b, e) => (e.mt > 0 && (!b || e.mt < b.mt) ? e : b), null);
+    G.median = times.length ? median(times) : null;
+    G.last = G.efforts[G.efforts.length - 1];
+    G.dist = Math.round(median(G.efforts.map((e) => e.dist)));
+    G.gain = Math.round(median(G.efforts.map((e) => e.gain)));
+    G.grade = G.dist ? G.gain / G.dist : 0;
+    G.id = 'c' + Math.round(G.a[0] * 2000) + '_' + Math.round(G.a[1] * 2000) + '_' + Math.round(G.dist / 100);
+  }
+  return groups;
+}
+export const recurringClimbs = (groups, min = 3) => groups.filter((g) => g.n >= min).sort((a, b) => b.n - a.n || b.gain - a.gain);
 
 export function recurringSegments(idx, min = 3) {
   return Object.values(idx).filter((s) => s.efforts.length >= min).sort((a, b) => b.efforts.length - a.efforts.length || b.gain - a.gain);

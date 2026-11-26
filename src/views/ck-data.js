@@ -236,3 +236,8 @@ export function weightInfo(H, day, days = 90) {
   const fatD = fat.length >= 2 ? fat[fat.length - 1].v - fat[0].v : null;
   return { pts, trend, goal, tNow, last, prev, rate, d30, eta, start: startRef, from: pts[0], days: span, fat: fat.length ? fat[fat.length - 1] : null, fatD, fatFrom: fat.length ? fat[0] : null };
 }
+
+// VO2max-Messungen eines Zeitraums (selten, daher nur die vorhandenen Punkte)
+export function vo2Series(H, day, days = 180) {
+  return daily(H.list, (r) => r.vo2, addD(day, -days), day);
+}
