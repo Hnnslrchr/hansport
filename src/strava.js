@@ -365,3 +365,6 @@ export async function connectStrava() {
   // Erster Aufruf nach einem Tipp: Claude fragt nach der Erlaubnis für Strava
   return sync({});
 }
+
+// In der Claude-Version: Zusammenfassung kommt aus den normalen Zeitreihen
+export async function ensureFullSummary() { return null; }

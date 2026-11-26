@@ -23,6 +23,7 @@ import { MetricSheet } from './health.jsx';
 import { explain } from '../strava.js';
 import { toast } from '../store.js';
 import { WEB, ACT_SRC } from '../env.js';
+import { SportCard } from './sportcard.jsx';
 
 // Fußzeile: Teile mit · verbinden, ohne Punkt am Ende der Teile
 const foot = (a) => a.filter(Boolean).join(' · ');
@@ -121,32 +122,11 @@ export function Today() {
 
 function LastActivity({ d }) {
   const a = d.list.find((x) => !x.excluded);
-  const pts = useMemo(() => (a && a.poly && !a.indoor ? decode(a.poly) : null), [a && a.id, a && a.poly]);
   // Web-Version: fehlt die Strecke einer Garmin-Aktivität, sofort aus der Originaldatei holen
   const wantMap = !!(a && !a.poly && a.gid && !a.indoor && !a.trainer && !a.noGps && a.dist > 0 && dsport(a) !== 'gym');
   useEffect(() => { if (wantMap && Acts.ensurePoly) Acts.ensurePoly(a.id).catch(() => {}); }, [wantMap, a && a.id]);
   if (!a) return <Tile cls="w2 g-akt"><Head icon="activity" label="Letzte Aktivität" /><NoData text={'Noch keine Aktivitäten – gleiche ' + ACT_SRC + ' ab.'} /></Tile>;
-  return (
-    <Tile cls="w2 g-akt" style="--gx:100%;--gy:0%;--gs:60% 70%" onClick={() => push('activity', { id: a.id })} label={'Letzte Aktivität: ' + a.name}>
-      <Head icon={actIcon(a)} label={'Letzte Aktivität · ' + relDate(a.date)} src={a.origin || 'strava'} />
-      <div style="font-size:var(--fs-t3);font-weight:600;letter-spacing:-.04em;line-height:1.15">{a.name}</div>
-      <div class="hp-sub">{sportLabel(dsport(a))}</div>
-      {pts && pts.length > 1 ? (
-        <div class="la-map">
-          <MapView still pad={16} maxFit={15} height="156px" fit={[pts]} fitKey={a.id}
-            lines={[{ pts, color: 'var(--c-akt)', width: 3.2 }]}
-            markers={[{ pt: pts[pts.length - 1], color: 'var(--ink)', ring: true, r: 4.5 }, { pt: pts[0], color: 'var(--ink)', r: 4.5 }]}
-            label={'Karte der Strecke ' + a.name} attr={false} />
-        </div>
-      ) : wantMap ? <div class="la-map skel" style="height:156px" aria-label="Karte wird geladen" /> : null}
-      {pts && pts.length > 1 ? <div class="la-attr">{ATTRIBUTION}</div> : null}
-      <div class="stats-mini">
-        <div><b>{a.dist ? km(a.dist) : '–'}</b><span>{a.indoor ? 'km virtuell' : 'km'}</span></div>
-        <div><b>{dur(a.mov).replace(' h', '').replace(' min', '')}</b><span>{a.mov >= 3600 ? 'Std.' : 'Min.'}</span></div>
-        <div><b>{a.gain ? hmFmt(a.gain) : '–'}</b><span>{a.indoor ? 'Hm virtuell' : 'Hm'}</span></div>
-      </div>
-    </Tile>
-  );
+  return <SportCard key={a.id} a={a} cls="w2 sc-tile" label={'Letzte Aktivität · ' + relDate(a.date)} onOpen={() => push('activity', { id: a.id })} />;
 }
 
 export function FormTile({ H, meta, sel, onOpen, v4 }) {

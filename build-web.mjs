@@ -32,12 +32,12 @@ for (const f of r.outputFiles) { if (f.path.endsWith('.js')) js = f.text; else i
 
 const OUT = 'public';
 mkdirSync(OUT + '/icons', { recursive: true });
-const LOGO = '/home/claude/logopkg/hansport-logo-paket';
-const logoDir = existsSync(LOGO) ? LOGO : 'assets/logo';
-for (const f of ['apple-touch-icon.png', 'icon-192.png', 'icon-512.png', 'icon-512-maskable.png', 'favicon-32.png']) cpSync(path.join(logoDir, 'png', f), path.join(OUT, 'icons', f));
-cpSync(path.join(logoDir, 'svg', 'favicon.svg'), path.join(OUT, 'icons', 'favicon.svg'));
-cpSync(path.join(logoDir, 'favicon.ico'), path.join(OUT, 'favicon.ico'));
-const logoSvg = readFileSync(path.join(logoDir, 'svg', 'hansport-icon.svg'), 'utf8').replace(/<\?xml[^>]*>/, '').trim();
+// App-Icon „Orb“ (Runde 6), erzeugt mit tools/orb-icons.mjs; neue Dateinamen, damit der Service Worker keine alten Icons liefert
+const ORB = 'assets/orb';
+for (const [f, to] of [['orb-16.png', 'orb-16.png'], ['orb-32.png', 'orb-32.png'], ['orb-48.png', 'orb-48.png'], ['orb-64.png', 'orb-64.png'], ['apple-touch-icon.png', 'orb-touch-180.png'], ['icon-192.png', 'orb-192.png'], ['icon-512.png', 'orb-512.png'], ['icon-512-maskable.png', 'orb-512-maskable.png']]) cpSync(path.join(ORB, 'png', f), path.join(OUT, 'icons', to));
+cpSync(path.join(ORB, 'favicon.svg'), path.join(OUT, 'icons', 'orb.svg'));
+cpSync(path.join(ORB, 'favicon.ico'), path.join(OUT, 'favicon.ico'));
+const logoSvg = readFileSync(path.join(ORB, 'hansport-icon.svg'), 'utf8').replace(/<\?xml[^>]*>/, '').trim();
 
 // Kartendaten (offline): nur kopieren, wenn sich etwas geändert hat
 const copyDir = (from, to) => { if (!existsSync(from)) return 0; mkdirSync(to, { recursive: true }); let n = 0; for (const f of readdirSync(from)) { const a = path.join(from, f), b = path.join(to, f); if (statSync(a).isDirectory()) continue; if (!existsSync(b) || statSync(b).size !== statSync(a).size) { cpSync(a, b); n++; } } return n; };
@@ -57,9 +57,10 @@ const head = `<meta charset="utf-8">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="hansport">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="icon" type="image/svg+xml" href="/icons/favicon.svg">
-<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
-<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="/icons/orb.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/orb-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/icons/orb-16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/icons/orb-touch-180.png">
 <link rel="manifest" href="/manifest.webmanifest">`;
 
 const html = `<!DOCTYPE html>
@@ -138,9 +139,10 @@ writeFileSync(OUT + '/manifest.webmanifest', JSON.stringify({
   name: 'hansport', short_name: 'hansport', description: 'Training, Gesundheit und Coach – privat.', lang: 'de', id: '/', start_url: '/', scope: '/',
   display: 'standalone', orientation: 'portrait', background_color: '#000000', theme_color: '#000000',
   icons: [
-    { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-    { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-    { src: '/icons/icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    { src: '/icons/orb-192.png', sizes: '192x192', type: 'image/png' },
+    { src: '/icons/orb-512.png', sizes: '512x512', type: 'image/png' },
+    { src: '/icons/orb-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+    { src: '/icons/orb.svg', sizes: 'any', type: 'image/svg+xml' },
   ],
 }, null, 1));
 

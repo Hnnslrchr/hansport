@@ -6,6 +6,7 @@ import { kvGet, kvSet } from '../platform.js';
 import { getState, setDoc, patchDoc, setStatus, toast, derived, getDocOnce } from '../store.js';
 import { encode, decode } from '../geo.js';
 import { powerCurve } from '../analysis.js';
+import { actSummary } from '../actsum.js';
 import { normalizeStreams, normalizeStrength } from '../strava.js';
 import { garmin, fit } from './api.js';
 import { recomputeHealth } from './health.js';
@@ -392,6 +393,21 @@ export async function ensureStrength(id) {
   const doc = { sets: (r && r.sets) || [], src: 'garmin', at: Date.now() };
   setDoc('strength/' + id, doc);
   return doc;
+}
+
+// Kennzahlen je Sportart aus voller Auflösung (z. B. Abfahrten und Liftfahrten beim Snowboarden)
+export async function ensureFullSummary(id) {
+  const p = getState().perf[id];
+  if (p && p.sum && p.sum.full) return p.sum;
+  const a = findAct(id);
+  const gid = gidOf(id);
+  if (!a || !gid) throw noSource();
+  const r = await fit(gid, 'full', { keys: 'time,distance,altitude' });
+  const s = normalizeStreams(r, 'full');
+  if (!s) throw new SyncError('tool_error', 'Keine Zeitreihen in voller Auflösung');
+  const sum = actSummary(a, s, { full: true });
+  if (sum) patchDoc('perf/' + id, { ...(getState().perf[id] || {}), sum });
+  return sum;
 }
 
 export const connectStrava = () => sync({});

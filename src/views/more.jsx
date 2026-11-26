@@ -535,13 +535,14 @@ export function ShareMap() {
 }
 
 // ---------- Kurzanleitung ----------
-export const APP_VERSION = 'Runde 4 · 22. Nov. 2026';
+export const APP_VERSION = 'Runde 6 · 26. Nov. 2026';
 export function Guide() {
   return (
     <div class="view">
       <Top title="Über hansport" />
       <div class="about">
-        <HansportLogo size={28} title="hansport" />
+        <HansportLogo variant="icon" size={72} title="hansport App-Icon" class="about-orb" />
+        <HansportLogo size={28} title="hansport" style={{ marginTop: 'var(--s-4)' }} />
         <div class="small muted" style="margin-top:var(--s-3)">Version {APP_VERSION}</div>
       </div>
       <Section title="Datenquellen">

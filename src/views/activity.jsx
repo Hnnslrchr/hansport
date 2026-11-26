@@ -20,6 +20,7 @@ import { km, hm, dur, int, num, dateLong, dateMid, timeOf, speedKmh, clock, pace
 import { RPE_LABELS, startGym } from './activities.jsx';
 import { heatItems } from './mapview.jsx';
 import { WEB, ACT_SRC } from '../env.js';
+import { SportCard, sportKind } from './sportcard.jsx';
 
 export function ActivityDetail({ id }) {
   const d = useData();
@@ -49,7 +50,7 @@ export function ActivityDetail({ id }) {
     if (!streams || !a) return [];
     return applyOverrides(streams, a.sport, e.sections) || computeSections(streams, a.sport);
   }, [streams, a && a.sport, e.sections]);
-  const gradeM = useMemo(() => { const g = gr || (perf && perf.gr) || (streams && streams.alt && streams.d ? toGrid({ d: streams.d, alt: streams.alt, t: streams.t }, 20) : null); try { return gradeModel(g); } catch (e) { return null; } }, [gr, perf && perf.gr, streams]);
+  const gradeM = useMemo(() => { if (a && (a.sport === 'snowboard')) return null; const g = gr || (perf && perf.gr) || (streams && streams.alt && streams.d ? toGrid({ d: streams.d, alt: streams.alt, t: streams.t }, 20) : null); try { return gradeModel(g); } catch (e) { return null; } }, [gr, perf && perf.gr, streams]);
   const pts = useMemo(() => (streams && streams.ll && streams.ll.length ? streams.ll : a && a.poly ? decode(a.poly) : null), [streams, a && a.poly]);
   const heat = useMemo(() => (!a || a.indoor ? [] : heatItems(d)), [d.v, a && a.indoor]);
   const mapCore = useRef();
@@ -65,13 +66,18 @@ export function ActivityDetail({ id }) {
   const cluster = d.clusters.find((c) => c.key === d.byAct[id]);
   const dup = d.dups[id] ? d.byId[d.dups[id]] : null;
   const zones = zonesAt(zoneHist(), a.date);
+  const inCardMap = !!(pts && pts.length > 1 && !a.indoor && ['road', 'mtb', 'hike', 'run'].includes(sportKind(a)));
 
   return (
     <div class="view has-sky g-akt">
       <div class="md-sky" aria-hidden="true" />
       <Top title={sportLabel(dsport(a))} actions={<button type="button" class="iconbtn" aria-label="Name und Sportart bearbeiten" onClick={() => openSheet(() => <EditSheet a={a} />)}>✎</button>} />
-      <div class="pad stack" style="gap:6px;margin-bottom:10px">
-        <div class="row"><Mark a={a} /><div class="grow"><h1 style="font-family:var(--display);font-size:var(--fs-t2);line-height:1.1">{a.name}</h1><div class="small muted">{dateLong(a.date)}{timeOf(a.start) ? ', ' + timeOf(a.start) : ''}{a.place && !a.indoor ? ' · ' + a.place.split(' - ')[0] : ''}</div></div></div>
+      <SportCard a={a} detail want={false} streams={streams} sections={sections} mapSlot={inCardMap ? <div class="sc-map"><MapView height="240px" heat={heat} heatMono heatAlpha={0.5} fit={[pts]} fitKey={id} coreRef={mapCore}
+            lines={[{ pts: streams && streams.ll ? streams.ll : pts, color: 'var(--c-akt)', width: 3.8 }, ...(segsOnMap ? [{ segments: segsOnMap, width: 3.8, halo: false }] : [])]}
+            markers={[{ pt: pts[pts.length - 1], color: 'var(--ink)', ring: true, r: 5.5 }, { pt: pts[0], color: 'var(--ink)', r: 5.5 }]}
+            cursor={cursor != null && streams && streams.ll ? streams.ll[cursor] : null}
+            label={'Karte der Aktivität ' + a.name} /></div> : null} />
+      <div class="pad" style="margin-top:10px">
         <div class="row wrap" style="gap:6px">
           {a.src === 'manual' ? <Est kind="man" /> : null}
           {a.indoor ? <span class="pill">Indoor{a.sub && !/indoor/i.test(a.sub) ? ' · ' + a.sub : a.sub ? ' · ' + a.sub.replace(/\s*\/?\s*indoor/i, '') : ''}</span> : a.sub ? <span class="pill">{a.sub}</span> : null}
@@ -84,10 +90,7 @@ export function ActivityDetail({ id }) {
         </div>
       </div>
       {dup ? <div style="margin-bottom:10px"><Note kind="warn">Mögliche Doppelaufzeichnung mit „{dup.name}" (gleiche Zeit, zwei Geräte). <button type="button" class="btn ghost" onClick={() => editAct(dup.id, { excluded: true })}>Die andere ausblenden</button></Note></div> : null}
-
-      <KeyStats a={a} perf={perf} sections={sections} />
-
-      {pts && !a.indoor ? (
+      {pts && !a.indoor && !inCardMap ? (
         <div style="margin:12px 16px 0;border-radius:14px;overflow:hidden;box-shadow:var(--shadow)">
           <MapView height="260px" heat={heat} heatMono heatAlpha={0.5} fit={[pts]} fitKey={id} coreRef={mapCore}
             lines={[{ pts: streams && streams.ll ? streams.ll : pts, color: 'var(--c-akt)', width: 3.8 }, ...(segsOnMap ? [{ segments: segsOnMap, width: 3.8, halo: false }] : [])]}

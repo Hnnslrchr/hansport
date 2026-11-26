@@ -1,7 +1,9 @@
 import { h, Fragment } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { subscribe, getVersion, derived, getState } from '../store.js';
-import { Mark, Cell, Est } from '../ui/kit.jsx';
+import { Mark, Cell, Est, Icon } from '../ui/kit.jsx';
+import { listMetrics } from './sportcard.jsx';
+import { dsport, sportLabel } from '../sports.js';
 import { km, hm, dur, dateShort, relDate, speedKmh, int, num, timeOf } from '../format.js';
 import { push } from '../nav.js';
 import { decode, merc, encode } from '../geo.js';
@@ -30,18 +32,21 @@ export function keyMetric(a) {
 }
 
 export function ActRow({ a, sub }) {
-  const m = keyMetric(a);
+  const S = getState();
+  const [top, bot] = listMetrics(a, S.perf[a.id], S.strength[a.id]);
   const flags = [];
   if (a.src === 'manual') flags.push('manuell');
   if (a.src === 'gym') flags.push('Trainingslog');
-  if (a.indoor) flags.push('indoor');
   if (a.edited && a.src === 'strava') flags.push('ergänzt');
   if (a.media && a.media.length) flags.push(a.media.length + ' Medien');
+  const kind = a.sub && !/indoor/i.test(a.sub) ? a.sub : sportLabel(dsport(a));
   return (
-    <Cell onClick={() => push('activity', { id: a.id })} left={<Mark a={a} />}
-      title={a.name}
-      sub={sub || (relDate(a.date) + (timeOf(a.start) ? ', ' + timeOf(a.start) : '') + (flags.length ? ' · ' + flags.join(' · ') : ''))}
-      right={<Fragment><b>{m.v}</b><div class="faint tiny">{m.s}</div></Fragment>} />
+    <button type="button" class="cell arow" onClick={() => push('activity', { id: a.id })}>
+      <Mark a={a} />
+      <div class="main"><div class="t1">{a.name}</div><div class="t2">{sub || (dateShort(a.date) + ' · ' + kind + (flags.length ? ' · ' + flags.join(' · ') : ''))}</div></div>
+      <div class="val"><b>{top || '–'}</b>{bot ? <span>{bot}</span> : null}</div>
+      <Icon.chev />
+    </button>
   );
 }
 

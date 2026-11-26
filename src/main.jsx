@@ -28,6 +28,7 @@ import { WEB } from './env.js';
 import { webBoot, Sources } from './web/views.jsx';
 import { Dashboard } from './views/dashboard.jsx';
 import { startAlign } from './ui/align.js';
+import { startIntro } from './ui/intro.js';
 
 // Aktivitäten mit Umschalter Liste | Karte
 function ActivitiesRoot() {
@@ -78,21 +79,6 @@ const TABS = [
   ['more', 'Mehr', 'more-horiz'],
 ];
 
-// Ladebildschirm: Zeichen zeichnet sich ein (ca. 0,9 s), dann blendet er aus
-let splashState = { show: true, out: false };
-const splashLs = new Set();
-function hideSplash() {
-  if (!splashState.show || splashState.out) return;
-  splashState = { show: true, out: true }; splashLs.forEach((f) => f());
-  setTimeout(() => { splashState = { show: false, out: true }; splashLs.forEach((f) => f()); }, 320);
-}
-function Splash() {
-  const [, setV] = useState(0);
-  useEffect(() => { const f = () => setV((x) => x + 1); splashLs.add(f); return () => splashLs.delete(f); }, []);
-  if (!splashState.show) return null;
-  return <div class={'splash' + (splashState.out ? ' out' : '')} aria-hidden="true"><HansportLogo variant="icon" size={96} animated title="hansport" /></div>;
-}
-
 const SCROLL = {};
 let lastShown = null;
 
@@ -132,7 +118,6 @@ function App() {
         <button type="button" class="more" aria-label="Mehr" aria-current={nav.tab === 'more' ? 'page' : undefined} onClick={() => setTab('more')}><Ico n="more-horiz" /></button>
       </nav>
       {nav.sheet ? <Fragment key={nav.sheet.key}>{nav.sheet.render()}</Fragment> : null}
-      <Splash />
       {S.toast ? <div class={'toast' + (S.toast.kind === 'error' ? ' error' : '')} role="status" aria-live="polite">{S.toast.text}</div> : null}
     </div>
   );
@@ -146,8 +131,9 @@ async function start() {
   document.addEventListener('touchstart', () => {}, { passive: true });
   if (window.__SPUR_TEST__) window.__spur = { push, setTab, getState, derived, sync, syncHealth };
   render(<App />, document.getElementById('app'));
-  const t0 = Date.now();
-  const cp = await boot().finally(() => setTimeout(hideSplash, Math.max(0, (reducedMotion() ? 250 : 1100) - (Date.now() - t0))));
+  const bootP = boot();
+  startIntro(bootP);
+  const cp = await bootP.catch(() => null);
   const set = getState().settings.main || {};
   if (set.theme && set.theme !== 'auto') document.documentElement.dataset.theme = set.theme;
   // Automatisch abgleichen (Strava, Garmin, Withings): beim Öffnen und beim Zurückkehren,

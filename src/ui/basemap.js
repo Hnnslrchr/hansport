@@ -444,3 +444,43 @@ export function drawBase(ctx, view, W, H, dpr, opts = {}) {
   }
   return total > 0 && covered / total > 0.5;
 }
+
+// Gipfel aus den Offline-Kartendaten im Umkreis eines Punkts (Meter); nächster zuerst. Ohne Kartendaten: []
+export function peaksNear(lat, lng, radius = 150, timeout = 6000) {
+  const wx = (lng + 180) / 360;
+  const s0 = Math.sin((Math.max(-85, Math.min(85, lat)) * Math.PI) / 180);
+  const wy = 0.5 - Math.log((1 + s0) / (1 - s0)) / (4 * Math.PI);
+  const mPerUnit = 40075016.686 * Math.cos((lat * Math.PI) / 180);
+  return new Promise((resolve) => {
+    let off = null, tm = null, done = false;
+    const end = (v) => { if (done) return; done = true; if (off) off(); clearTimeout(tm); resolve(v); };
+    const look = () => {
+      if (!baseReady()) return idxState === 'none' ? end([]) : null;
+      const z = MAXDATA, n = 2 ** z;
+      const keys = new Set();
+      // Nachbarkacheln mitnehmen, falls der Punkt am Rand liegt
+      for (const dx of [-1, 0, 1]) for (const dy of [-1, 0, 1]) {
+        const tx = Math.floor(wx * n) + dx, ty = Math.floor(wy * n) + dy;
+        const dk = dataFor(z, tx, ty); if (dk) keys.add(dk.join('/'));
+      }
+      if (!keys.size) return end([]);
+      const out = [];
+      for (const k of keys) {
+        const [pz, px, py] = k.split('/').map(Number);
+        const t = getTile(pz, px, py);
+        if (!t) continue;
+        if (t.state === 'loading') return null;
+        for (const l of t.labels || []) {
+          if (l.kind !== 'peak') continue;
+          const dist = Math.hypot(l.wx - wx, l.wy - wy) * mPerUnit;
+          if (dist <= radius) out.push({ name: l.name, ele: l.ele, dist: Math.round(dist) });
+        }
+      }
+      const seen = new Set();
+      end(out.sort((a, b) => a.dist - b.dist).filter((p) => (seen.has(p.name) ? false : seen.add(p.name))));
+    };
+    off = onBaseChange(look);
+    tm = setTimeout(() => end([]), timeout);
+    look();
+  });
+}
