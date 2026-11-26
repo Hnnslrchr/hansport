@@ -549,3 +549,107 @@ html.intro-on, html.intro-on body { background: #000; }
 .ck-day .l { display: flex; gap: 18px; }
 @media (prefers-reduced-motion: reduce) { .ck-hero .spec-mk { transition: none; } }
 .ck-err { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; font-size: var(--fs-foot); color: var(--ink-2); }
+
+/* Cockpit: Umschalter Kompakt/Detail und Detailansicht (Runde 8) */
+.ck-segw { display: flex; justify-content: flex-end; margin: 2px 0 -6px; }
+.ck-seg { position: relative; display: inline-grid; grid-auto-flow: column; }
+.ck-seg::before { content: ''; position: absolute; left: 0; right: 0; top: 6px; height: 32px; border-radius: 9px; background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.ck-seg button { position: relative; min-height: 44px; padding: 0 18px; border: 0; background: none; font: inherit; font-size: var(--fs-sub); font-weight: 600; color: var(--ink-2); }
+.ck-seg button::before { content: ''; position: absolute; left: 2px; right: 2px; top: 8px; height: 28px; border-radius: 7px; transition: background .18s ease, box-shadow .18s ease; }
+.ck-seg button.on::before { background: var(--bg); box-shadow: 0 1px 3px rgba(0, 0, 0, .16), 0 0 0 .5px rgba(0, 0, 0, .04); }
+.ck-seg button.on { color: var(--ink); }
+.ck-seg button span { position: relative; }
+@media (prefers-reduced-motion: reduce) { .ck-seg button::before { transition: none; } }
+.ck-xf { animation: ckXf .24s ease; }
+@keyframes ckXf { from { opacity: .35; } to { opacity: 1; } }
+.ck-xtra { animation: ckIn .24s ease .09s both; }
+@keyframes ckIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ck-xtra { animation: none; } }
+.ck-line .ico.pre { width: 15px; height: 15px; margin-right: 5px; vertical-align: -2px; color: var(--ink-2); }
+.ck-stack { display: flex; flex-direction: column; gap: 10px; margin: 0 var(--ck-page); }
+.ck-stack > .ck-card, .ck-stack > .sc { margin: 0; }
+.ck-card.wide { display: block; width: 100%; border: 0; text-align: left; font: inherit; color: var(--ink); padding: 16px; border-radius: 22px; }
+.ck-card.wide .ck-tn { margin-bottom: 2px; }
+/* Faktoren der Tagesform */
+.ck-fx { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
+.ck-fh { display: flex; justify-content: space-between; font-size: var(--fs-foot); color: var(--ink-2); }
+.ck-fh .dir { display: flex; gap: 10px; }
+.ck-f { margin-top: 10px; }
+.ck-f .r1 { display: flex; align-items: center; gap: 7px; font-size: var(--fs-sub); }
+.ck-f .r1 .sw { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.ck-f .r1 b { font-weight: 600; }
+.ck-f .r1 .w { color: var(--ink-2); font-size: var(--fs-foot); }
+.ck-f .r1 .pts { margin-left: auto; font-weight: 650; font-variant-numeric: tabular-nums; }
+.ck-f .r2 { display: grid; grid-template-columns: 1fr 1.1fr; align-items: center; gap: 10px; margin-top: 3px; }
+.ck-f .r2 .v { font-size: var(--fs-foot); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+/* Belastung heute gegen den Schnitt */
+.ck-cmp { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
+.ck-cmp .row { display: grid; grid-template-columns: 84px 1fr 42px; align-items: center; gap: 10px; margin-top: 6px; }
+.ck-cmp .row .l { font-size: var(--fs-foot); color: var(--ink-2); }
+.ck-cmp .row b { font-size: var(--fs-sub); font-weight: 650; text-align: right; font-variant-numeric: tabular-nums; }
+.ck-cmp .bar { height: 8px; border-radius: 4px; background: color-mix(in srgb, var(--ink) 10%, transparent); overflow: hidden; }
+.ck-cmp .bar i { display: block; height: 100%; border-radius: 4px; background: var(--c-akt); }
+.ck-cmp .ctx .bar i { background: var(--ctx); }
+/* Heute Nacht: Schlafschuld und Zubettgehzeiten */
+.ck-kv { display: flex; align-items: baseline; gap: 8px; margin-top: 16px; border-top: 1px solid var(--line); padding-top: 14px; }
+.ck-kv span { font-size: var(--fs-sub); color: var(--ink-2); }
+.ck-kv b { font-size: 22px; font-weight: 650; letter-spacing: -.016em; font-variant-numeric: tabular-nums; }
+.ck-kv em { font-style: normal; font-size: var(--fs-foot); color: var(--ink-2); margin-left: auto; text-align: right; }
+.ck-dots { margin-top: 12px; }
+.ck-dots svg { display: block; width: 100%; height: 48px; overflow: visible; }
+.ck-dots .z { stroke: color-mix(in srgb, var(--ink) 30%, transparent); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.ck-dots .d { stroke: color-mix(in srgb, var(--c-sch) 70%, transparent); stroke-width: 7; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.ck-dots .d.on { stroke: var(--c-sch); stroke-width: 9; }
+.ck-dots .ax { display: flex; justify-content: space-between; font-size: var(--fs-cap); color: var(--ink-3); margin-top: 2px; }
+.ck-dots .ax .on { color: var(--ink); font-weight: 600; }
+/* Gesundheit im Detail */
+.ck-grid.det .ck-tile.big { min-height: 168px; }
+.ck-tile.big .ck-tv { margin-top: 10px; }
+.ck-mini { display: block; width: 100%; height: 36px; margin-top: 10px; overflow: visible; }
+.ck-mini.empty { height: 36px; }
+.ck-mini .b { fill: color-mix(in srgb, var(--c, var(--ink)) 16%, transparent); }
+.ck-mini .l { fill: none; stroke: var(--c, var(--ink)); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.ck-mini .p { stroke: var(--c, var(--ink)); stroke-width: 6; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.ck-tile.big .ck-sub { margin-top: 8px; display: flex; align-items: center; gap: 4px; }
+.ck-sub i.up, .ck-sub i.dn { width: 0; height: 0; border-left: 3.5px solid transparent; border-right: 3.5px solid transparent; }
+.ck-sub i.up { border-bottom: 5px solid var(--ink-2); }
+.ck-sub i.dn { border-top: 5px solid var(--ink-2); }
+/* Training im Detail */
+.ck-row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.ck-row3.one { grid-template-columns: 1fr; }
+.ck-row3 > span { display: flex; flex-direction: column; }
+.ck-row3 b { font-size: 28px; line-height: 32px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.ck-row3.one b { font-size: 34px; line-height: 40px; }
+.ck-row3.sm b { font-size: 22px; line-height: 27px; }
+.ck-row3 b small { font-size: var(--fs-foot); font-weight: 500; letter-spacing: 0; margin-left: 2px; color: var(--ink-2); }
+.ck-row3 em { font-style: normal; font-size: var(--fs-foot); color: var(--ink-2); margin-top: 1px; }
+.ck-tri { display: block; width: 100%; height: 96px; margin-top: 12px; overflow: visible; }
+.ck-tri .z { stroke: color-mix(in srgb, var(--ink) 30%, transparent); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.ck-tri path { fill: none; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.ck-tri .ctl { stroke: color-mix(in srgb, var(--ink) 45%, transparent); stroke-width: 1.6; }
+.ck-tri .atl { stroke: color-mix(in srgb, var(--ink) 45%, transparent); stroke-width: 1.6; stroke-dasharray: 4 3; }
+.ck-tri .tsb { stroke: var(--ink); stroke-width: 2.2; }
+.ck-lg { display: flex; align-items: center; gap: 5px; margin-top: 8px; font-size: var(--fs-foot); color: var(--ink-2); }
+.ck-lg i { width: 14px; height: 0; border-top: 2px solid var(--ink); margin-left: 8px; }
+.ck-lg i:first-child { margin-left: 0; }
+.ck-lg i.ctl { border-top-color: color-mix(in srgb, var(--ink) 45%, transparent); }
+.ck-lg i.atl { border-top: 2px dashed color-mix(in srgb, var(--ink) 45%, transparent); }
+.ck-days7 { margin-top: 12px; }
+.ck-days7 .db-plot { height: 86px; }
+.ck-card.wide .int-b { margin-top: 12px; }
+/* Ernährung, Dein Tag, Körper */
+.ck-tips { margin: 10px 0 0; padding-left: 18px; font-size: var(--fs-sub); color: var(--ink); }
+.ck-tips li { margin-top: 4px; line-height: 1.35; }
+.ck-tips b { font-weight: 600; }
+.ck-tl { position: relative; height: 24px; margin-top: 14px; border-radius: 7px; background: color-mix(in srgb, var(--ink) 7%, transparent); overflow: hidden; }
+.ck-tl .b { position: absolute; top: 0; bottom: 0; }
+.ck-tl .b.sleep, .ck-tl .b.bed { background: color-mix(in srgb, var(--c-sch) 55%, transparent); }
+.ck-tl .b.act { background: var(--c-akt); }
+.ck-tl .now { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--ink); }
+.ck-tlax { display: flex; justify-content: space-between; font-size: var(--fs-cap); color: var(--ink-3); margin-top: 3px; }
+.ck-tll { list-style: none; margin: 10px 0 0; padding: 0; font-size: var(--fs-sub); color: var(--ink); }
+.ck-tll li { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.ck-tll i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.ck-tll i.sleep, .ck-tll i.bed { background: color-mix(in srgb, var(--c-sch) 55%, transparent); }
+.ck-tll i.act { background: var(--c-akt); }
+.ck-card .ml { margin-top: 10px; }

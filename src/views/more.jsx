@@ -535,7 +535,7 @@ export function ShareMap() {
 }
 
 // ---------- Kurzanleitung ----------
-export const APP_VERSION = 'Runde 7 · 26. Nov. 2026';
+export const APP_VERSION = 'Runde 8 · 26. Nov. 2026';
 export function Guide() {
   return (
     <div class="view">
