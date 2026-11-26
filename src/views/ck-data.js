@@ -5,6 +5,7 @@ import { M, latest, series } from '../metrics.js';
 import { aggregate, addDays } from '../analysis.js';
 import { readiness, recommendation, balance, recFor, loadRatio, nutrition } from '../coach-logic.js';
 import { num } from '../format.js';
+import { daily, rolling, tOf, addD, DAY } from '../viz-data.js';
 
 export const n0 = (v) => (v == null ? '–' : num(v, 0).replace('-', '−'));
 export const n1 = (v) => (v == null ? '–' : num(v, 1).replace('-', '−'));
@@ -48,7 +49,11 @@ export function weekStats(list, date) {
     days.push({ date: dd, v: dd <= date ? acts.reduce((s, a) => s + (a.mov || 0), 0) / 60 : null, n: acts.length });
   }
   const avg = P.count ? { time: P.time / 4, dist: P.dist / 4, gain: P.gain / 4, count: P.count / 4 } : null;
-  return { A, avg, days, week: cur, from: w0 };
+  // Vorwoche als Kontext hinter den Tagesbalken
+  const pw = list.filter((a) => a.date >= addDays(w0, -7) && a.date < w0);
+  const prevDays = [];
+  for (let i = 0; i < 7; i++) { const dd = addDays(w0, i - 7); const v = pw.filter((a) => a.date === dd).reduce((s2, a) => s2 + (a.mov || 0), 0) / 60; prevDays.push(v || null); }
+  return { A, avg, days, prevDays: prevDays.some((v) => v) ? prevDays : null, week: cur, from: w0 };
 }
 
 // übliche Weckzeit (Median der letzten 14 Nächte), Schlafbedarf, Schlafschuld und Zubettgehzeiten
@@ -164,4 +169,70 @@ export function trendOf(H, day, k) {
   const row = (pts.filter((p) => p.v != null).pop() || {}).r;
   const band = row && M[k].normal ? M[k].normal(row) : null;
   return { pts, avg, band, vals: pts.map((p) => p.v).filter((v) => v != null) };
+}
+
+// ---------- Reihen für die Diagramme der Detailansicht ----------
+
+export function nightsOf(H, day, n = 7) {
+  return series(H.map, 'sleep', day, n).map((p) => {
+    const sl = (p.r && p.r.sl) || {};
+    return { date: p.date, deep: sl.deep || 0, light: sl.light || 0, rem: sl.rem || 0, total: sl.total != null ? sl.total : p.v, score: sl.score != null ? sl.score : (p.r || {}).slScore };
+  });
+}
+export function bbRange(H, day, n = 7) {
+  return series(H.map, 'bb', day, n).map((p) => {
+    const g = (p.r && p.r.g) || {};
+    return { date: p.date, lo: g.bbLo != null ? g.bbLo : null, hi: g.bbHi != null ? g.bbHi : null, wake: g.bbWake != null ? g.bbWake : null };
+  });
+}
+export function stressShare(H, day, n = 7) {
+  return series(H.map, 'stress', day, n).map((p) => {
+    const m = (p.r && p.r.g && p.r.g.stressMin) || null;
+    return { date: p.date, parts: m ? [m.rest || 0, m.low || 0, m.med || 0, m.high || 0] : null, v: p.v };
+  });
+}
+export function colsOf(H, day, k, n = 7) { return series(H.map, k, day, n).map((p) => ({ date: p.date, v: p.v, r: p.r })); }
+export function avgOf(H, day, k, n) { const v = series(H.map, k, day, n).map((p) => p.v).filter((x) => x != null); return v.length ? mean(v) : null; }
+
+// Gewicht: Messungen, geglätteter Trend, Rate je Woche, Fortschritt und Prognose zum Ziel
+export function weightInfo(H, day, days = 90) {
+  const S = getState();
+  const goal = (S.settings.main && S.settings.main.healthGoals && S.settings.main.healthGoals.weight) || null;
+  const all = daily(H.list, (r) => (r.wi ? r.wi.weight : null), '0000', day);
+  if (!all.length) return null;
+  const from = addD(day, -days);
+  const win = all.filter((p) => p.date >= from);
+  let pts = win.length >= 2 ? win : all.slice(-6);
+  // Liegt im Fenster eine lange Messpause, beginnt die Kurve danach – sonst drückt ein alter
+  // Wert die aktuelle Entwicklung flach und der Verlauf zeigt vor allem Leere.
+  for (let i = pts.length - 1; i > 0; i--) {
+    if ((pts[i].t - pts[i - 1].t) / DAY <= 21) continue;
+    const rest = pts.slice(i);
+    if (rest.length >= 3 && (pts[pts.length - 1].t - rest[0].t) / DAY >= 14) pts = rest;
+    break;
+  }
+  const trend = rolling(all.filter((p) => p.date >= addD(from, -14)), 7, 21).filter((p) => p.v == null || p.t >= tOf(pts[0].date));
+  const tl = trend.filter((p) => p.v != null);
+  const tNow = tl.length ? tl[tl.length - 1].v : null;
+  const last = all[all.length - 1];
+  const prev = all.length > 1 ? all[all.length - 2] : null;
+  const t28 = tl.filter((p) => p.t >= tOf(addD(day, -28)));
+  const rate = t28.length >= 2 && t28[t28.length - 1].t > t28[0].t ? ((t28[t28.length - 1].v - t28[0].v) / ((t28[t28.length - 1].t - t28[0].t) / DAY)) * 7 : null;
+  const d30 = (() => { const a = all.filter((p) => p.t >= tOf(addD(day, -30))); return a.length >= 2 ? a[a.length - 1].v - a[0].v : null; })();
+  let eta = null;
+  if (goal != null && tNow != null && rate && Math.abs(rate) >= 0.05) {
+    const need = goal - tNow;
+    if ((need < 0 && rate < 0) || (need > 0 && rate > 0)) {
+      const weeks = Math.abs(need / rate);
+      if (weeks <= 78) eta = new Date(tOf(day) + weeks * 7 * DAY);
+    }
+  }
+  const span = Math.max(1, Math.round((pts[pts.length - 1].t - pts[0].t) / DAY));
+  // Fortschritt misst gegen die älteste Messung des letzten halben Jahres, nicht gegen den
+  // Beginn der gezeigten Kurve – sonst wäre der zurückgelegte Weg nicht zu sehen.
+  const hist = all.filter((p) => p.t >= tOf(addD(day, -180)));
+  const startRef = hist.length ? hist[0] : pts[0];
+  const fat = daily(H.list, (r) => (r.wi ? r.wi.fatPct : null), pts[0].date, day);
+  const fatD = fat.length >= 2 ? fat[fat.length - 1].v - fat[0].v : null;
+  return { pts, trend, goal, tNow, last, prev, rate, d30, eta, start: startRef, from: pts[0], days: span, fat: fat.length ? fat[fat.length - 1] : null, fatD, fatFrom: fat.length ? fat[0] : null };
 }

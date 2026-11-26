@@ -3,14 +3,15 @@
 import { h, Fragment } from 'preact';
 import { useMemo } from 'preact/hooks';
 import { Ico } from '../ui/hp.jsx';
-import { DayBars, DevBar, MeasureLine } from '../ui/r5.jsx';
+import { DevBar } from '../ui/r5.jsx';
+import { StageBars, BandLine, RangeBars, ShareBars, GoalCols, PmcChart, WeightChart, Bullet } from '../ui/ck-charts.jsx';
 import { push } from '../nav.js';
 import { M, latest, series } from '../metrics.js';
 import { addDays } from '../analysis.js';
 import { loadRatio } from '../coach-logic.js';
 import { hmm } from '../viz-data.js';
-import { km, hm as hmFmt, int, num, NB } from '../format.js';
-import { n0, n1, sgn0, durHM, durU, minClock, mean, trendOf, healthView } from './ck-data.js';
+import { km, hm as hmFmt, int, num, dayMon, NB } from '../format.js';
+import { n0, n1, sgn0, durHM, durU, minClock, mean, trendOf, healthView, nightsOf, bbRange, stressShare, colsOf, avgOf, weightInfo } from './ck-data.js';
 
 const WD = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const FCOL = { hrv: 'var(--c-erh)', sleep: 'var(--c-sch)', rhr: 'var(--c-herz)', load: 'var(--c-akt)', bb: 'var(--c2-erh)' };
@@ -96,48 +97,66 @@ function BedDots({ items, target }) {
   );
 }
 
-// ---------- 3. Gesundheit: größere Kachel mit 7-Tage-Verlauf ----------
-export function HealthTileBig({ x, day, H }) {
+// ---------- 3. Gesundheit: je Kennzahl eine Karte mit der passenden Darstellung ----------
+// Kopf: Name und Einordnung. Darunter der Wert und die Veränderung zum Schnitt der letzten
+// 28 Tage – so steht die Entwicklung neben der Zahl. Dann das Diagramm, dann die beiden Mittel.
+export function HealthRow({ x, day, H }) {
+  // Beim Schlaf ist die Dauer die Kernzahl; der Score steht als Einordnung daneben
+  if (x.k === 'slScore' && x.r && (x.r.slMin != null || (x.r.sl && x.r.sl.total != null))) {
+    const tot = x.r.sl && x.r.sl.total != null ? x.r.sl.total : x.r.slMin;
+    x = { ...x, k: 'sleep', v: tot, score: x.v };
+  }
   const v = healthView(x, day);
-  const t = useMemo(() => trendOf(H, x.date, x.k), [H, x.date, x.k]);
-  let d28 = t.avg != null && x.v != null ? x.v - t.avg : null;
-  const eps = x.k === 'weight' || x.k === 'resp' ? 0.05 : x.k === 'sleep' ? 1 : 0.5;
+  if (x.score != null) v.note = 'Score ' + x.score + ' · ' + (x.score >= 90 ? 'sehr gut' : x.score >= 80 ? 'gut' : x.score >= 60 ? 'solide' : 'schwach');
+  if (v.stale) v.note = healthView(x, day).note;
+  const k = x.k;
+  const t = useMemo(() => trendOf(H, x.date, k === 'sleep' ? 'sleep' : k), [H, x.date, k]);
+  const avg7 = t.vals.length ? mean(t.vals) : null;
+  const d28 = t.avg != null && x.v != null ? x.v - t.avg : null;
+  const eps = k === 'weight' || k === 'resp' ? 0.05 : k === 'sleep' ? 2 : 0.5;
   const flat = d28 != null && Math.abs(d28) < eps;
-  const better = M[x.k].better;
-  const good = d28 == null || !better ? null : better === 'up' ? d28 > 0 : d28 < 0;
-  if (flat) d28 = 0;
-  const fmtD = x.k === 'sleep' ? (q) => hmm(Math.abs(q)) : x.k === 'weight' || x.k === 'resp' ? (q) => num(Math.abs(q), 1) : (q) => num(Math.abs(q), 0);
+  const better = M[k] && M[k].better;
+  const up = d28 != null && d28 > 0;
+  const good = d28 == null || flat || !better ? null : better === 'up' ? up : !up;
+  const f = (q) => (q == null ? '–' : k === 'sleep' ? hmm(q) : M[k].fmt(q));
+  const fd = (q) => (k === 'sleep' ? hmm(Math.abs(q)) : k === 'weight' || k === 'resp' ? num(Math.abs(q), 1) : num(Math.abs(q), 0));
+  const chart = useMemo(() => bodyChart(k, H, x, day, v), [k, H, x.date, day]);
   return (
-    <button type="button" class={'ck-tile big glow ' + v.grp} onClick={() => push('metric', { k: v.mk })}
-      aria-label={v.name + ' ' + v.val + ' ' + v.unit + (v.note ? ', ' + v.note : '') + (d28 != null ? ', ' + (d28 > 0 ? 'über' : 'unter') + ' dem Schnitt der letzten 28 Tage' : '') + ', Details'}>
-      <span class="ck-tn"><Ico n={v.icon} />{v.name}</span>
-      <span class="ck-tv"><b>{v.val}{v.unit ? <small>{v.unit}</small> : null}</b>{v.note ? <em class={v.stale ? 'warn' : ''}>{v.note}</em> : null}</span>
-      <MiniTrend pts={t.pts} band={t.band} k={x.k} />
-      <span class="ck-sub">{d28 == null ? '7 Tage' : flat ? 'wie Ø 28 Tage' : (d28 > 0 ? '+' : '−') + fmtD(d28) + (v.unit ? NB + v.unit : '') + ' zu Ø 28 Tage'}{good != null && !flat ? <i class={good ? 'up' : 'dn'} aria-hidden="true" /> : null}</span>
+    <button type="button" class={'ck-hrow glow ' + v.grp} onClick={() => push('metric', { k: v.mk })}
+      aria-label={v.name + ' ' + v.val + ' ' + v.unit + (v.note ? ', ' + v.note : '') + (d28 != null && !flat ? ', ' + fd(d28) + (up ? ' über' : ' unter') + ' dem Schnitt der letzten 28 Tage' : '') + ', Details'}>
+      <span class="ck-hh"><Ico n={v.icon} />{v.name}{v.note ? <span class={'st' + (v.stale ? ' warn' : '')}>{v.note}</span> : null}</span>
+      <span class="ck-hv">
+        <b>{v.val}{v.unit ? <small>{v.unit}</small> : null}</b>
+        {d28 == null ? null : <span class="d">{flat ? 'wie Ø 28 Tage' : <Fragment><i class={up ? 'up' : 'dn'} />{fd(d28)}{v.unit ? NB + v.unit : ''} zu Ø 28 Tage</Fragment>}</span>}
+      </span>
+      {chart}
+      <span class="ck-hf">{avg7 != null ? <span>Ø 7 Tage {f(avg7)}{v.unit ? NB + v.unit : ''}</span> : null}{t.avg != null ? <span>Ø 28 Tage {f(t.avg)}{v.unit ? NB + v.unit : ''}</span> : null}</span>
     </button>
   );
 }
 
-// 7-Tage-Verlauf: Normalbereich als Band, Linie, letzter Wert als Punkt
-function MiniTrend({ pts, band, k }) {
-  const vals = pts.map((p) => p.v).filter((v) => v != null);
-  if (!vals.length) return <span class="ck-mini empty" />;
-  let lo = Math.min(...vals, band ? band[0] : Infinity), hi = Math.max(...vals, band ? band[1] : -Infinity);
-  if (hi - lo < 1e-6) { lo -= 1; hi += 1; }
-  const pad = (hi - lo) * 0.18; lo -= pad; hi += pad;
-  const W = 100, Hh = 36;
-  const X = (i) => 3 + (i / (pts.length - 1)) * (W - 6), Y = (v) => 4 + (1 - (v - lo) / (hi - lo)) * (Hh - 8);
-  let dd = '', lastI = -2;
-  pts.forEach((p, i) => { if (p.v == null) { lastI = -2; return; } dd += (lastI === i - 1 ? 'L' : 'M') + X(i).toFixed(1) + ',' + Y(p.v).toFixed(1); lastI = i; });
-  const li = pts.map((p, i) => (p.v != null ? i : -1)).filter((i) => i >= 0).pop();
-  return (
-    <svg class={'ck-mini ' + k} viewBox={`0 0 ${W} ${Hh}`} preserveAspectRatio="none" aria-hidden="true">
-      {band ? <rect x="0" y={Y(band[1])} width={W} height={Math.max(1.5, Y(band[0]) - Y(band[1]))} class="b" /> : null}
-      <path d={dd} class="l" />
-      <line x1={X(li)} x2={X(li)} y1={Y(pts[li].v)} y2={Y(pts[li].v)} class="p" />
-    </svg>
-  );
+// Diagrammform je Kennzahl
+function bodyChart(k, H, x, day, v) {
+  const end = x.date;
+  if (k === 'slScore' || k === 'sleep') {
+    const nights = nightsOf(H, end, 7);
+    const need = (x.r && x.r.need) || null;
+    return <StageBars nights={nights} need={need} label={'Schlafphasen der letzten 7 Nächte, zuletzt ' + hmm(nights[nights.length - 1].total || 0) + ' Stunden'} />;
+  }
+  if (k === 'bb') return <RangeBars items={bbRange(H, end, 7)} label="Body Battery der letzten 7 Tage, je Tag von Tief bis Hoch mit dem Wert beim Aufwachen" />;
+  if (k === 'stress') {
+    const items = stressShare(H, end, 7);
+    if (items.some((i) => i.parts)) return <ShareBars items={items} label="Anteil der Stressstufen je Tag der letzten 7 Tage" />;
+  }
+  if (k === 'steps' || k === 'akcal' || k === 'stress') {
+    const items = colsOf(H, end, k, 7);
+    const goal = k === 'steps' ? (x.r && x.r.g && x.r.g.stepsGoal) || null : null;
+    return <GoalCols items={items} goal={goal} avg={goal ? null : avgOf(H, end, k, 28)} fmt={(q) => M[k].fmt(q)} label={M[k].label + ' der letzten 7 Tage'} />;
+  }
+  const n = k === 'vo2' ? 28 : 14;
+  return <BandLine pts={colsOf(H, end, k, n)} band={t0Band(H, end, k)} fmt={(q) => M[k].fmt(q)} unit={v.unit} label={M[k].label + ' der letzten ' + n + ' Tage' + (t0Band(H, end, k) ? ' mit deinem Normalbereich' : '')} />;
 }
+const t0Band = (H, end, k) => { const l = latest(H.list, k, end); return l && M[k].normal ? M[k].normal(l.r) : null; };
 
 // ---------- 4. Training: Form, Woche, Intensität ----------
 export function FormCard({ H, day }) {
@@ -149,45 +168,38 @@ export function FormCard({ H, day }) {
   const f = latest(H.list, 'tsb', day);
   if (!f) return null;
   const r = f.r;
+  const was = H.map[addDays(day, -7)] || {};
+  const dC = was.ctl != null && r.ctl != null ? r.ctl - was.ctl : null;
+  const dF = was.tsb != null && r.tsb != null ? r.tsb - was.tsb : null;
   return (
     <button type="button" class="ck-card wide glow g-trn" onClick={() => push('metric', { k: 'tsb' })} aria-label={'Form ' + sgn0(r.tsb) + ', Fitness ' + n1(r.ctl) + ', Ermüdung ' + n1(r.atl) + ', Verlauf 14 Tage, Details'}>
-      <span class="ck-tn">Form · 14 Tage</span>
+      <span class="ck-tn">Belastung · 14 Tage</span>
       <span class="ck-row3">
-        <span><b>{sgn0(r.tsb)}</b><em>Form</em></span>
-        <span><b>{n0(r.ctl)}</b><em>Fitness</em></span>
+        <span><b>{sgn0(r.tsb)}</b><em>Form{dF != null ? ' · ' + sgn0(dF) + ' zur Vorwoche' : ''}</em></span>
+        <span><b>{n0(r.ctl)}</b><em>Fitness{dC != null ? ' · ' + sgn0(dC) : ''}</em></span>
         <span><b>{n0(r.atl)}</b><em>Ermüdung</em></span>
       </span>
-      <TriLine pts={pts} />
-      <span class="ck-lg" aria-hidden="true"><i class="ctl" />Fitness<i class="atl" />Ermüdung<i class="tsb" />Form</span>
+      <PmcChart pts={pts} label={'Fitness, Ermüdung und Form der letzten 14 Tage; heute Form ' + sgn0(r.tsb)} />
+      <span class="ck-sub">{formSay(r.tsb, dF)}</span>
     </button>
   );
 }
-
-function TriLine({ pts }) {
-  const all = [];
-  for (const p of pts) for (const k of ['ctl', 'atl', 'tsb']) if (p[k] != null) all.push(p[k]);
-  if (all.length < 4) return <span class="ck-tri empty" />;
-  const lo = Math.min(0, ...all) - 2, hi = Math.max(0, ...all) + 2;
-  const W = 100, Hh = 96;
-  const X = (i) => 1 + (i / (pts.length - 1)) * (W - 2), Y = (v) => 4 + (1 - (v - lo) / (hi - lo)) * (Hh - 8);
-  const path = (k) => { let dd = '', prev = -2; pts.forEach((p, i) => { if (p[k] == null) { prev = -2; return; } dd += (prev === i - 1 ? 'L' : 'M') + X(i).toFixed(1) + ',' + Y(p[k]).toFixed(1); prev = i; }); return dd; };
-  return (
-    <svg class="ck-tri" viewBox={`0 0 ${W} ${Hh}`} preserveAspectRatio="none" role="img" aria-label={'Verlauf der letzten 14 Tage von Fitness, Ermüdung und Form'}>
-      <line x1="0" x2={W} y1={Y(0)} y2={Y(0)} class="z" />
-      <path d={path('ctl')} class="ctl" /><path d={path('atl')} class="atl" /><path d={path('tsb')} class="tsb" />
-    </svg>
-  );
+function formSay(tsb, dF) {
+  const w = tsb > 15 ? 'sehr frisch' : tsb > 5 ? 'frisch' : tsb >= -10 ? 'neutral' : tsb >= -30 ? 'produktiv ermüdet' : 'sehr hohe Belastung';
+  if (dF == null) return 'Form ' + w + '.';
+  return 'Form ' + w + ', ' + (dF > 2 ? 'erholter als vor einer Woche' : dF < -2 ? 'belasteter als vor einer Woche' : 'wie vor einer Woche') + '.';
 }
 
 export function WeekCard({ w }) {
   const avgDay = w.avg ? w.avg.time / 7 / 60 : null;
+  const items = w.days.map((d) => ({ date: d.date, v: d.v }));
+  const prev = w.prevDays || null;
+  const dT = w.avg ? w.A.time - w.avg.time : null;
   return (
     <button type="button" class="ck-card wide glow g-akt" onClick={() => push('reviews')} aria-label={'Diese Woche ' + durHM(w.A.time) + ' ' + durU(w.A.time) + ', zu den Rückblicken'}>
       <span class="ck-tn">Diese Woche · Mo–So</span>
-      <span class="ck-row3 one"><span><b>{durHM(w.A.time)}<small>{durU(w.A.time)}</small></b><em>{w.avg ? 'von Ø ' + durHM(w.avg.time) + NB + durU(w.avg.time) : 'noch kein Schnitt'}</em></span></span>
-      <div class="ck-days7">
-        <DayBars items={w.days} avg={avgDay && avgDay > 0 ? avgDay : null} avgLabel={avgDay ? 'Ø Tag ' + hmm(avgDay) : null} fmt={(v) => hmm(v)} topFmt={(v) => hmm(v)} unit="h" label="Trainingszeit je Tag dieser Woche" />
-      </div>
+      <span class="ck-row3 one"><span><b>{durHM(w.A.time)}<small>{durU(w.A.time)}</small></b><em>{w.avg ? 'Ø der 4 Wochen davor ' + durHM(w.avg.time) + NB + durU(w.avg.time) + (dT != null ? ' · ' + (dT >= 0 ? '+' : '−') + durHM(Math.abs(dT)) + NB + durU(Math.abs(dT)) : '') : 'noch kein Schnitt'}</em></span></span>
+      <GoalCols items={items} prev={prev} avg={avgDay && avgDay > 0 ? avgDay : null} fmt={(v) => hmm(v)} label="Trainingszeit je Tag dieser Woche im Vergleich zur Vorwoche" />
       <span class="ck-row3 sm">
         <span><b>{km(w.A.dist)}<small>km</small></b><em>{w.avg ? 'Ø ' + km(w.avg.dist) + NB + 'km' : '–'}</em></span>
         <span><b>{hmFmt(w.A.gain)}<small>Hm</small></b><em>{w.avg ? 'Ø ' + hmFmt(w.avg.gain) + NB + 'Hm' : '–'}</em></span>
@@ -247,7 +259,7 @@ export function NutriCard({ N, evening, today }) {
       {N.tips.length && N.sess ? (
         <ul class="ck-tips">{N.tips.map((t) => <li><b>{t.when}:</b> {t.text}</li>)}</ul>
       ) : null}
-      <p class="ck-line s">{N.kg ? 'Gewicht ' + n1(N.kg) + ' kg' : 'Kein Gewicht'}{N.trend ? (Math.abs(N.trend.d) < 0.05 ? ', 6 Wochen unverändert' : ', 6 Wochen ' + (N.trend.d > 0 ? '+' : '−') + n1(Math.abs(N.trend.d)) + ' kg') : ''}{N.goal ? ', Ziel ' + n1(N.goal) + ' kg' : ''}. Richtwerte aus der Sporternährung – Schätzungen, keine Diätberatung.</p>
+      <p class="ck-line s">Richtwerte aus der Sporternährung – Schätzungen, keine Diätberatung.</p>
     </section>
   );
 }
@@ -283,26 +295,34 @@ export function DayTimeline({ ds, H, day, now }) {
 const toM = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(t || ''); return m ? +m[1] * 60 + +m[2] : null; };
 const sleepBed = (H, day) => { const r = H.map[day] || {}; return r.sl && r.sl.start ? toM(r.sl.start) : null; };
 
-// Körper: Gewicht und Körperfett mit 30-Tage-Verlauf
+// Körper: aktuelles Gewicht, Trend, Fortschritt zum Ziel und Prognose
 export function BodyCard({ H, day }) {
-  const w = latest(H.list, 'weight', day);
-  const f = latest(H.list, 'fatPct', day);
-  const pts = series(H.map, 'weight', day, 31).map((p) => ({ date: p.date, v: p.v }));
-  const have = pts.filter((p) => p.v != null);
-  if (!w || (new Date(day) - new Date(w.date)) / 864e5 > 60) return null;
-  const d30 = have.length >= 2 ? have[have.length - 1].v - have[0].v : null;
-  const fs = f ? series(H.map, 'fatPct', day, 31).map((p) => p.v).filter((v) => v != null) : [];
-  const fd = fs.length >= 2 ? fs[fs.length - 1] - fs[0] : null;
+  const w = useMemo(() => weightInfo(H, day, 90), [H, day]);
+  if (!w || !w.last || (new Date(day) - new Date(w.last.date)) / 864e5 > 60) return null;
+  const since = w.prev ? w.last.v - w.prev.v : null;
+  const age = Math.round((new Date(day + 'T12:00:00') - new Date(w.last.date + 'T12:00:00')) / 864e5);
+  const when = age === 0 ? 'heute' : age === 1 ? 'gestern' : 'vor ' + age + ' Tagen';
+  const eta = w.eta ? w.eta.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' }) : null;
   return (
     <Fragment>
       <div class="ck-sec"><h2>Körper</h2></div>
-      <section class="ck-card glow g-kor" aria-label="Körper">
-        <span class="ck-row3">
-          <span><b>{n1(w.v)}<small>kg</small></b><em>{d30 != null ? (d30 > 0 ? '+' : '−') + n1(Math.abs(d30)) + ' kg in 30 Tagen' : 'Gewicht'}</em></span>
-          {f ? <span><b>{n1(f.v)}<small>%</small></b><em>{fd != null ? 'Körperfett ' + (fd > 0 ? '+' : '−') + n1(Math.abs(fd)) : 'Körperfett'}</em></span> : null}
-        </span>
-        {have.length >= 2 ? <MeasureLine pts={pts} step={1} from={addDays(day, -30)} to={day} trend label={'Gewicht der letzten 30 Tage, zuletzt ' + n1(w.v) + ' kg'} height={112} /> : <p class="ck-line s">Für einen Verlauf fehlen Messungen der letzten 30 Tage.</p>}
-        <p class="ck-line s">Gemessen mit der Withings-Waage, zuletzt {new Date(w.date + 'T12:00:00').toLocaleDateString('de-DE', { day: 'numeric', month: 'short' }).replace(/\.$/, '')}. Tageswerte schwanken, aussagekräftig ist der Trend.</p>
+      <section class="ck-card glow g-kor" aria-label="Gewicht und Körperfett">
+        <span class="ck-tn"><Ico n="weight" />Gewicht</span>
+        <div class="ck-wv">
+          <b>{n1(w.last.v)}<small>kg</small></b>
+          <div class="s">
+            <span>{when}{since != null ? (since > 0 ? ' · +' : ' · −') + n1(Math.abs(since)) + ' kg zur Messung davor' : ''}</span>
+            {w.tNow != null ? <span>Trend {n1(w.tNow)} kg{w.rate ? ' · ' + (w.rate > 0 ? '+' : '−') + n1(Math.abs(w.rate)) + ' kg/Woche' : ''}</span> : null}
+          </div>
+        </div>
+        {w.goal != null ? <Bullet start={w.start.v} value={w.tNow != null ? w.tNow : w.last.v} goal={w.goal} startLabel={dayMon(w.start.date)} /> : null}
+        <WeightChart pts={w.pts} trend={w.trend} goal={w.goal} from={dayMon(w.from.date)} label={'Gewicht seit ' + dayMon(w.from.date) + ' mit Trendlinie' + (w.goal != null ? ' und Ziellinie' : '')} />
+        <p class="ck-line s">
+          {w.d30 != null ? (Math.abs(w.d30) < 0.05 ? 'In 30 Tagen unverändert. ' : (w.d30 > 0 ? '+' : '−') + n1(Math.abs(w.d30)) + ' kg in 30 Tagen. ') : ''}
+          {w.goal == null ? 'Ohne Zielgewicht zeigt die Karte nur den Trend; du kannst es in der Kennzahl Gewicht setzen.' : eta ? 'Bei diesem Tempo wäre das Ziel etwa im ' + eta + ' erreicht – eine Hochrechnung, kein Versprechen.' : w.rate && Math.abs(w.rate) >= 0.05 ? 'Der Trend zeigt gerade nicht zum Ziel.' : 'Das Gewicht steht gerade still.'}
+        </p>
+        {w.fat ? <div class="ck-wfat"><span>Körperfett</span><b>{n1(w.fat.v)}<small>%</small></b><em>{w.fatD != null && Math.abs(w.fatD) >= 0.05 ? (w.fatD > 0 ? '+' : '−') + n1(Math.abs(w.fatD)) + ' seit ' + dayMon(w.fatFrom.date) : 'seit ' + dayMon(w.fatFrom.date) + ' unverändert'}</em></div> : null}
+        <p class="ck-line s">Gemessen mit der Withings-Waage. Tageswerte schwanken um 0,5–1 kg; der Trend ist der 7-Tage-Schnitt.</p>
       </section>
     </Fragment>
   );

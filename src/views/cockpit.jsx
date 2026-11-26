@@ -29,7 +29,7 @@ import {
   n0, sgn0, clock, fmtLong, kick, durHM, durU, minClock, modeAt, GREET,
   dayStats, weekStats, sleepPlan, dayVerdict, outlook, formOf, nutriOf, healthItems, healthView,
 } from './ck-data.js';
-import { FactorBars, nutriLine, LoadCompare, NightExtra, HealthTileBig, FormCard, WeekCard, ZoneCard, NutriCard, DayTimeline, BodyCard } from './cockpit-detail.jsx';
+import { FactorBars, nutriLine, LoadCompare, NightExtra, HealthRow, FormCard, WeekCard, ZoneCard, NutriCard, DayTimeline, BodyCard } from './cockpit-detail.jsx';
 
 // Ansicht gilt für die Sitzung: beim Kaltstart und an einem neuen Tag wieder kompakt
 let SESSION = { v: 'kompakt', date: null };
@@ -270,14 +270,15 @@ function TomorrowCard({ ds, H, day }) {
 
 // ---------- Gesundheit: kompakt die 4 wichtigsten, im Detail bis zu 8 mit Verlauf ----------
 function HealthSection({ H, day, detail }) {
-  const items = healthItems(H, day, detail ? 8 : 4);
+  let items = healthItems(H, day, detail ? 9 : 4);
+  if (detail) items = items.filter((x) => x.k !== 'weight').slice(0, 8);
   if (!items.length) return null;
   return (
     <div data-m="health">
       <SecHead title="Gesundheit" onAll={() => setTab('health')} />
-      <div class={'ck-grid' + (detail ? ' det' : '')}>
-        {items.map((x) => (detail ? <HealthTileBig x={x} day={day} H={H} /> : <HealthTile x={x} day={day} />))}
-      </div>
+      {detail
+        ? <div class="ck-rows">{items.map((x) => <HealthRow x={x} day={day} H={H} />)}</div>
+        : <div class="ck-grid">{items.map((x) => <HealthTile x={x} day={day} />)}</div>}
     </div>
   );
 }
