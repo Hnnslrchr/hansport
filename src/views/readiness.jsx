@@ -56,7 +56,7 @@ export function ReadinessCard({ H, date, plan, full = false, today }) {
         <div class="rdy-calc">
           <p>Jeder Faktor wird mit deiner eigenen Basis der letzten 60 Tage verglichen: 60 Punkte heißt wie üblich, jede Standardabweichung zählt ±20. Schlaf: 0,7 × Dauer zum Bedarf + 0,3 × (100 − Schlafschuld der letzten 3 Nächte ÷ 3). Belastung: Schnitt der letzten 7 Tage zu dem der letzten 28 Tage. Gewichte: {ORDER.map((k) => FACTOR_LABEL[k] + ' ' + n0(WEIGHTS[k] * 100) + NB + '%').join(', ')}.</p>
           {full ? <table><tbody>{parts.map((p) => <tr><td>{p.label}</td><td>{p.formula} = <b>{n0(p.pts)}</b></td><td>× {n0(p.w * 100)}{NB}%</td></tr>)}</tbody></table> : null}
-          <p>Summe {R.raw}{R.capped.length ? ', wegen Warnsignal auf höchstens 45 gedeckelt' : ''}. Stufen: ab 75 hart, 55–74 normal, 40–54 locker, darunter Ruhe. Eine Schätzung, keine medizinische Bewertung.</p>
+          <p>Summe {R.raw}{R.capped.length ? ', wegen Warnsignal auf höchstens 45 gedeckelt' : ''}. Stufen: ab 75 intensiv, 55–74 normal, 40–54 locker, darunter Ruhe. Eine Schätzung, keine medizinische Bewertung.</p>
         </div>
       ) : null}
       {!full ? <button type="button" class="rdy-link" onClick={() => push('metric', { k: 'rec' })}>Verlauf ansehen<Ico n="nav-arrow-right" cls="s" /></button> : null}

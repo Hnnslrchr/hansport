@@ -124,7 +124,7 @@ export function Note({ kind, children }) {
   return <div class={'note' + (kind ? ' ' + kind : '')} role={kind === 'bad' ? 'alert' : undefined}>{kind ? <Icon.warn /> : <Icon.info />}<div>{children}</div></div>;
 }
 
-export function Sheet({ title, children, onClose = closeSheet }) {
+export function Sheet({ title, children, onClose = closeSheet, kicker, big = false }) {
   const ref = useRef(), scrim = useRef(), body = useRef();
   const H = () => (ref.current ? ref.current.offsetHeight || 600 : 600);
   const apply = (y) => {
@@ -202,7 +202,7 @@ export function Sheet({ title, children, onClose = closeSheet }) {
       <div class="scrim" ref={scrim} style="opacity:0" onClick={() => dismiss()} />
       <div class="sheet" role="dialog" aria-modal="true" aria-label={title} ref={ref} style="transform:translate3d(0,100%,0)">
         <div class="grab-area" {...handle}><div class="grab" aria-hidden="true" /></div>
-        <div class="sh-head" {...handle}><h2>{title}</h2><button type="button" class="iconbtn" aria-label="Schließen" onPointerDown={(e) => e.stopPropagation()} onClick={() => dismiss()}><Icon.close /></button></div>
+        <div class={'sh-head' + (big ? ' big' : '')} {...handle}>{kicker ? <div class="sh-txt"><div class="sh-kick">{kicker}</div><h2>{title}</h2></div> : <h2>{title}</h2>}<button type="button" class="iconbtn" aria-label="Schließen" onPointerDown={(e) => e.stopPropagation()} onClick={() => dismiss()}><Icon.close /></button></div>
         <div class="sh-body" ref={body}>{children}</div>
       </div>
     </div>

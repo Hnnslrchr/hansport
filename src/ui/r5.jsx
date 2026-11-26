@@ -137,8 +137,8 @@ export function Arc({ min, max, value, center, unit, label, maxSize = 168 }) {
   );
 }
 
-// Spektrum Ruhe – Locker – Normal – Hart mit Markierung
-export const ZONES = [[0, 40, 'Ruhe'], [40, 55, 'Locker'], [55, 75, 'Normal'], [75, 100, 'Hart']];
+// Spektrum Ruhe – Locker – Normal – Intensiv mit Markierung
+export const ZONES = [[0, 40, 'Ruhe'], [40, 55, 'Locker'], [55, 75, 'Normal'], [75, 100, 'Intensiv']];
 export function Spectrum({ value, label }) {
   const cur = value == null ? null : ZONES.find((z) => value >= z[0] && (value < z[1] || z[1] === 100));
   return (

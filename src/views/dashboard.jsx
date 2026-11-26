@@ -230,7 +230,7 @@ function Intensity({ list, name }) {
       <div class="stats three int-st">
         <div class="stat"><div class="v">{Math.round(easy)}<small>%</small></div><div class="l">locker · Z1–2</div></div>
         <div class="stat"><div class="v">{Math.round(mid)}<small>%</small></div><div class="l">mittel · Z3</div></div>
-        <div class="stat"><div class="v">{Math.round(hard)}<small>%</small></div><div class="l">hart · Z4–5</div></div>
+        <div class="stat"><div class="v">{Math.round(hard)}<small>%</small></div><div class="l">intensiv · Z4–5</div></div>
       </div>
       <div class="hp-sub">{hmin(tot)}{NB}h mit Puls aus {withZ.length} von {list.length} {list.length === 1 ? 'Einheit' : 'Einheiten'}, nach deinen Garmin-Pulszonen.</div>
     </Tile>

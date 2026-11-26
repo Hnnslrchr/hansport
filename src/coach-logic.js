@@ -15,7 +15,7 @@ const n0 = (v) => num(v, 0).replace('-', '−'), n1 = (v) => num(v, 1).replace('
 export const WEIGHTS = { hrv: 0.25, sleep: 0.25, rhr: 0.15, load: 0.2, bb: 0.15 };
 export const FACTOR_LABEL = { hrv: 'HRV', sleep: 'Schlaf', rhr: 'Ruhepuls', load: 'Belastung', bb: 'Body Battery' };
 export const LEVELS = [
-  { min: 75, k: 'hart', name: 'Hart', label: 'hart möglich' },
+  { min: 75, k: 'intensiv', name: 'Intensiv', label: 'intensiv möglich' },
   { min: 55, k: 'normal', name: 'Normal', label: 'normales Training' },
   { min: 40, k: 'locker', name: 'Locker', label: 'locker' },
   { min: 0, k: 'ruhe', name: 'Ruhe', label: 'Ruhe / aktive Erholung' },
@@ -83,19 +83,21 @@ export function balance(H, date) {
     const r = H.map[addD(date, -i)];
     if (r && r.ctl != null && r.atl != null) {
       const tsb = r.tsb != null ? r.tsb : r.ctl - r.atl;
-      const k = tsb < -20 ? 'ruhe' : tsb < -10 ? 'locker' : tsb <= 5 ? 'normal' : 'hart';
+      const k = tsb < -20 ? 'ruhe' : tsb < -10 ? 'locker' : tsb <= 5 ? 'normal' : 'intensiv';
       return { tsb, ctl: r.ctl, atl: r.atl, date: addD(date, -i), k, word: tsb < -30 ? 'sehr ermüdet' : tsb < -10 ? 'ermüdet' : tsb <= 5 ? 'ausgeglichen' : 'frisch' };
     }
   }
   return null;
 }
 
+// Stufen der Tagesform in der ganzen App: Ruhe, Locker, Normal, Intensiv
 const REC = {
-  ruhe: { title: 'Heute: Ruhe oder sehr locker', detail: 'Höchstens 30–45 min in Zone 1, sonst Pause.' },
-  locker: { title: 'Heute: locker, 45–75 min Zone 2', detail: 'Ruhig rollen, keine Intervalle, Puls unter der Zone-2-Obergrenze.' },
-  normal: { title: 'Heute: normal, 60–120 min Zone 2', detail: 'Ausdauer in Zone 2, kurze Tempoabschnitte sind möglich.' },
-  hart: { title: 'Heute: hart oder lang möglich', detail: 'Intervalle oder eine lange Ausfahrt passen.' },
+  ruhe: { title: 'Heute: Ruhe oder sehr locker', detail: 'Höchstens 30–45 min in Zone 1, sonst Pause.', head: 'Heute Ruhe', line: 'Pause oder höchstens 30–45 min ganz locker in Zone 1.' },
+  locker: { title: 'Heute: locker, 45–75 min Zone 2', detail: 'Ruhig rollen, keine Intervalle, Puls unter der Zone-2-Obergrenze.', head: 'Heute locker', line: '45–75 min in Zone 1–2, keine Intervalle.' },
+  normal: { title: 'Heute: normal, 60–120 min Zone 2', detail: 'Ausdauer in Zone 2, kurze Tempoabschnitte sind möglich.', head: 'Heute normal', line: '60–120 min in Zone 2, kurze Tempoabschnitte sind möglich.' },
+  intensiv: { title: 'Heute: intensiv oder lang möglich', detail: 'Intervalle oder eine lange Ausfahrt passen.', head: 'Heute intensiv möglich', line: 'Intervalle oder eine lange Ausfahrt passen.' },
 };
+REC.hart = REC.intensiv; // ältere gespeicherte Stufe
 export const recFor = (k) => REC[k];
 
 export function recommendation(R, H, date, plan) {
@@ -103,7 +105,7 @@ export function recommendation(R, H, date, plan) {
   let lk = R.level.k;
   const notes = [];
   const tsb = R.r.tsb != null ? R.r.tsb : (H.map[addD(R.date, -1)] || {}).tsb;
-  if (tsb != null && tsb < -20 && (lk === 'hart' || lk === 'normal')) { lk = 'locker'; notes.push('Form unter −20: trotz guter Einzelwerte lieber locker.'); }
+  if (tsb != null && tsb < -20 && (lk === 'intensiv' || lk === 'hart' || lk === 'normal')) { lk = 'locker'; notes.push('Form unter −20: trotz guter Einzelwerte lieber locker.'); }
   for (const c of R.capped || []) notes.push(c + ': heute höchstens locker. Bleibt das so oder fühlst du dich krank, ärztlich abklären lassen.');
   // Gründe: die Teile mit der größten Abweichung (Richtung passend zur Empfehlung)
   const dir = R.score >= 55 ? -1 : 1;

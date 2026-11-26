@@ -268,7 +268,7 @@ async function doSync({ full = false } = {}) {
     writeDirty(merged);
     const allDays = Object.keys(days).sort();
     setDoc('meta/health', clean({
-      v: 7, src: 'garmin', lastSync: Date.now(), lastDay: allDays.length ? allDays[allDays.length - 1] : (meta.lastDay || today),
+      v: 8, src: 'garmin', lastSync: Date.now(), lastDay: allDays.length ? allDays[allDays.length - 1] : (meta.lastDay || today),
       pmc: pmc || meta.pmc || null, bb30: meta.bb30 || bbDone || null, ecg: ecgDone || meta.ecg || null, slProbe: slProbe || meta.slProbe || null,
       notes: notes.length ? notes.slice(0, 5) : null,
     }));
@@ -346,7 +346,7 @@ export function recomputeHealth() {
   const pmc = deriveAll(all, todayLocal());
   writeDirty(all);
   const meta = (getState().meta && getState().meta.health) || {};
-  if ((pmc && JSON.stringify(pmc) !== JSON.stringify(meta.pmc)) || meta.v !== 7) setDoc('meta/health', { ...meta, v: 7, pmc: pmc || meta.pmc || null });
+  if ((pmc && JSON.stringify(pmc) !== JSON.stringify(meta.pmc)) || meta.v !== 8) setDoc('meta/health', { ...meta, v: 8, pmc: pmc || meta.pmc || null });
   return pmc;
 }
 

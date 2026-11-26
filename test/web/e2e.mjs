@@ -87,7 +87,7 @@ try {
   check(wi.wi && wi.wi.weight === 78.1 && wi.wi.fatPct === 17.1 && wi.weight === 78.1 && wi.src.weight === 'withings', 'Withings: ' + JSON.stringify(wi.wi));
   const ecg = await page.evaluate(() => { const H = window.__spur.getState().health; const m = H['2026-11'] ? H['2026-11'].days : {}; return { a: m['2026-11-23'] && m['2026-11-23'].wi && m['2026-11-23'].wi.ecg, b: m['2026-11-17'] && m['2026-11-17'].wi && m['2026-11-17'].wi.ecg, n: Object.values(m).filter((x) => x.wi && x.wi.ecg).length, meta: (window.__spur.getState().meta.health || {}).ecg }; });
   check(ecg.a && ecg.a.afib === 0 && ecg.a.hr === 58 && ecg.a.qrs === 94 && ecg.a.qtc === 411 && ecg.a.sid === 9000 && ecg.b && ecg.b.afib === 2 && ecg.meta && ecg.meta.n >= 19, 'Withings-EKG übernommen: ' + JSON.stringify(ecg));
-  check(hs.meta.v === 7 && hs.meta.src === 'garmin', 'meta/health v7 (' + JSON.stringify(hs.meta.notes || null) + ')');
+  check(hs.meta.v === 8 && hs.meta.src === 'garmin', 'meta/health v8 (' + JSON.stringify(hs.meta.notes || null) + ')');
   }
 
   // 5) Aktivität mit Zeitreihen aus FIT

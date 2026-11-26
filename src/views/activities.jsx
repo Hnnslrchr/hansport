@@ -116,7 +116,7 @@ function ManualForm() {
   );
 }
 
-export const RPE_LABELS = ['1 · sehr leicht', '2 · leicht', '3 · locker', '4 · moderat', '5 · etwas fordernd', '6 · fordernd', '7 · hart', '8 · sehr hart', '9 · fast maximal', '10 · maximal'];
+export const RPE_LABELS = ['1 · sehr leicht', '2 · leicht', '3 · locker', '4 · moderat', '5 · etwas fordernd', '6 · fordernd', '7 · intensiv', '8 · sehr intensiv', '9 · fast maximal', '10 · maximal'];
 
 function RouteList({ d }) {
   const fav = (getState().routes.main || {}).fav || [];

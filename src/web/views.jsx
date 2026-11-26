@@ -163,7 +163,7 @@ export function webBoot() {
     off();
     setTimeout(() => {
       try { seedGear(); } catch (e) { console.warn(e); }
-      try { if ((S.meta.health || {}).v !== 7 && Object.keys(S.health || {}).length) recomputeHealth(); } catch (e) { console.warn(e); }
+      try { if ((S.meta.health || {}).v !== 8 && Object.keys(S.health || {}).length) recomputeHealth(); } catch (e) { console.warn(e); }
     }, 300);
   });
   try {

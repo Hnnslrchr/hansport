@@ -212,8 +212,8 @@ function Relations({ H, end, acts }) {
     if (k === 'load') {
       const P = [];
       for (const r of H.list) { if (r.date > end || r.hrv == null) continue; const nx = H.map[addD(r.date, 1)]; if (!nx || nx.hrv == null) continue; P.push({ x: r.load || 0, y: nx.hrv, date: r.date }); }
-      return { P, q: 'Wie reagiert deine HRV am nächsten Morgen auf einen harten Trainingstag?', names: ['Ruhige Tage', 'Mittlere Tage', 'Harte Tage'], zeroName: 'Ruhetage', none: 'ohne Belastung', xl: 'Belastung', xu: 'Last', xf: n0, yl: 'HRV am Folgetag', yu: 'ms', yf: n0, df: (v) => sgn(v, 0), per: 'Tage', min: 20, g: 'erh',
-        say: (hi, lo, u) => `Nach harten Tagen lag deine HRV am nächsten Morgen im Schnitt bei ${hi} ${u}, nach ruhigen Tagen bei ${lo} ${u}.`, swing: 'deine HRV von Tag zu Tag' };
+      return { P, q: 'Wie reagiert deine HRV am nächsten Morgen auf einen intensiven Trainingstag?', names: ['Ruhige Tage', 'Mittlere Tage', 'Intensive Tage'], zeroName: 'Ruhetage', none: 'ohne Belastung', xl: 'Belastung', xu: 'Last', xf: n0, yl: 'HRV am Folgetag', yu: 'ms', yf: n0, df: (v) => sgn(v, 0), per: 'Tage', min: 20, g: 'erh',
+        say: (hi, lo, u) => `Nach intensiven Tagen lag deine HRV am nächsten Morgen im Schnitt bei ${hi} ${u}, nach ruhigen Tagen bei ${lo} ${u}.`, swing: 'deine HRV von Tag zu Tag' };
     }
     if (k === 'sleep') {
       const P = []; for (const r of H.list) { const v = M.rec.get(r); if (r.date <= end && r.sl && r.sl.total && v != null) P.push({ x: r.sl.total / 60, y: v, date: r.date }); }
